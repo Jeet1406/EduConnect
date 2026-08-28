@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Achievements - MentorBridge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1E293B',
+                        secondary: '#10B981',
+                        accent: '#FBBF24',
+                        darkNavy: '#0F172A',
+                        lightBg: '#F8FAFC'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-lightBg text-darkNavy font-sans antialiased">
+
+    <header class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
+        <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+            <a href="/Home" class="flex items-center space-x-2">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white font-bold text-xl shadow-md">M</div>
+                <span class="text-2xl font-extrabold tracking-tight text-primary">MentorBridge</span>
+            </a>
+            <nav class="hidden md:flex items-center space-x-8 text-sm font-medium text-slate-600">
+                <a href="/student" class="hover:text-primary transition">Dashboard</a>
+                <a href="/student/sessions" class="hover:text-primary transition">My Sessions</a>
+                <a href="/student/achievements" class="text-primary font-semibold">Achievements</a>
+                <a href="/student/resources" class="hover:text-primary transition">Resources</a>
+            </nav>
+            <div class="flex items-center space-x-4">
+                <span class="text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1 rounded-full">Student account</span>
+                <a href="/logout" class="text-xs font-semibold text-slate-500 hover:text-primary">Logout</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-6 py-10">
+
+        <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm mb-8 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-primary">Achievements &amp; Badges 🏆</h1>
+                <p class="text-slate-500 text-sm mt-1">Track your progress and celebrate your learning journey, {{ student.full_name }}.</p>
+            </div>
+            <div class="text-4xl">🏆✨</div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm text-center">
+                <div class="text-2xl mb-1">🎖️</div>
+                <h2 class="text-2xl font-bold text-primary">{{ unlocked_count }}</h2>
+                <p class="text-xs text-slate-500">Badges Earned</p>
+            </div>
+            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm text-center">
+                <div class="text-2xl mb-1">📈</div>
+                <h2 class="text-2xl font-bold text-primary">{{ completed_sessions_count }}</h2>
+                <p class="text-xs text-slate-500">Sessions Completed</p>
+            </div>
+            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm text-center">
+                <div class="text-2xl mb-1">⏰</div>
+                <h2 class="text-2xl font-bold text-primary">{{ total_hours }}</h2>
+                <p class="text-xs text-slate-500">Hours Learned</p>
+            </div>
+            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm text-center">
+                <div class="text-2xl mb-1">🤝</div>
+                <h2 class="text-2xl font-bold text-primary">{{ mentors_connected }}</h2>
+                <p class="text-xs text-slate-500">Mentors Connected</p>
+            </div>
+        </div>
+
+        <div class="grid lg:grid-cols-2 gap-8">
+
+            <!-- Badges -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                <h3 class="font-bold text-primary mb-6">Your Badges</h3>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {% for b in badges %}
+                    <div class="text-center p-4 rounded-2xl border {{ 'border-secondary bg-emerald-50/40' if b.unlocked else 'border-slate-200 bg-lightBg opacity-50' }}">
+                        <div class="text-3xl mb-2">{{ b.icon if b.unlocked else '🔒' }}</div>
+                        <h4 class="text-xs font-bold text-primary">{{ b.name }}</h4>
+                        <p class="text-[10px] text-slate-500 mt-1">{{ b.desc }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Progress Overview -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                <h3 class="font-bold text-primary mb-6">Progress Overview</h3>
+                <div class="space-y-5">
+                    <div>
+                        <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
+                            <span>📖 Sessions completed</span>
+                            <span>{{ completed_sessions_count }} / 20</span>
+                        </div>
+                        <div class="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                            <div class="bg-secondary h-full rounded-full" style="width: {{ [completed_sessions_count * 5, 100] | min }}%;"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
+                            <span>⏱️ Learning time</span>
+                            <span>{{ total_hours }} / 10 hrs</span>
+                        </div>
+                        <div class="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                            <div class="bg-secondary h-full rounded-full" style="width: {{ [(total_hours / 10 * 100) | round | int, 100] | min }}%;"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
+                            <span>📁 Resources explored</span>
+                            <span>{{ resources_count }} / 5</span>
+                        </div>
+                        <div class="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                            <div class="bg-secondary h-full rounded-full" style="width: {{ [resources_count * 20, 100] | min }}%;"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
+                            <span>🤝 Mentors connected</span>
+                            <span>{{ mentors_connected }}</span>
+                        </div>
+                        <div class="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                            <div class="bg-secondary h-full rounded-full" style="width: {{ [mentors_connected * 50, 100] | min }}%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+</body>
+</html>

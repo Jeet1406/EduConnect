@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Sessions - MentorBridge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1E293B',
+                        secondary: '#10B981',
+                        accent: '#FBBF24',
+                        darkNavy: '#0F172A',
+                        lightBg: '#F8FAFC'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-lightBg text-darkNavy font-sans antialiased">
+
+    <header class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
+        <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+            <a href="/Home" class="flex items-center space-x-2">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white font-bold text-xl shadow-md">M</div>
+                <span class="text-2xl font-extrabold tracking-tight text-primary">MentorBridge</span>
+            </a>
+            <nav class="hidden md:flex items-center space-x-8 text-sm font-medium text-slate-600">
+                <a href="/student" class="hover:text-primary transition">Dashboard</a>
+                <a href="/student/sessions" class="text-primary font-semibold">My Sessions</a>
+                <a href="/student/achievements" class="hover:text-primary transition">Achievements</a>
+                <a href="/student/resources" class="hover:text-primary transition">Resources</a>
+            </nav>
+            <div class="flex items-center space-x-4">
+                <span class="text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1 rounded-full">Student account</span>
+                <a href="/logout" class="text-xs font-semibold text-slate-500 hover:text-primary">Logout</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-6 py-10">
+
+        <!-- Header Banner -->
+        <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-primary">My Sessions 📅</h1>
+                <p class="text-slate-500 text-sm mt-1">Track, manage and join your learning sessions with mentors.</p>
+            </div>
+
+            {% if my_mentorships %}
+            <details class="relative">
+                <summary class="list-none cursor-pointer bg-primary hover:bg-slate-800 text-white text-xs font-bold px-5 py-3 rounded-xl transition">+ Book New Session</summary>
+                <div class="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl p-5 z-10">
+                    <h3 class="text-sm font-bold text-primary mb-3">Book a session</h3>
+                    <form method="post" class="space-y-3" id="book-session-form" action="">
+                        <select name="mentor_select" onchange="document.getElementById('book-session-form').action = '/session/book/' + this.value" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2">
+                            <option value="">Choose a mentor...</option>
+                            {% for m in my_mentorships %}
+                            <option value="{{ m.id }}">{{ m.mentor.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="text" name="topic" placeholder="Topic" required class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2">
+                        <div class="flex gap-2">
+                            <input type="date" name="date" required class="flex-1 text-sm border border-slate-300 rounded-xl px-3 py-2">
+                            <input type="time" name="time" required class="flex-1 text-sm border border-slate-300 rounded-xl px-3 py-2">
+                        </div>
+                        <div class="flex gap-2">
+                            <input type="number" name="duration" value="60" min="15" step="15" class="w-24 text-sm border border-slate-300 rounded-xl px-3 py-2">
+                            <select name="mode" class="flex-1 text-sm border border-slate-300 rounded-xl px-3 py-2">
+                                <option>Google Meet</option>
+                                <option>Zoom</option>
+                                <option>In-person</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="w-full bg-accent hover:bg-amber-400 text-darkNavy text-sm font-bold px-4 py-2.5 rounded-xl transition">Confirm booking</button>
+                    </form>
+                </div>
+            </details>
+            {% endif %}
+        </div>
+
+        <!-- Top Grid -->
+        <div class="grid lg:grid-cols-3 gap-6 mb-8">
+
+            <!-- Upcoming Session Card -->
+            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-primary">Upcoming Session</h3>
+                    {% if next_session %}<span class="text-xs font-bold bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full">Upcoming</span>{% endif %}
+                </div>
+                {% if next_session %}
+                <h4 class="font-bold text-primary text-sm">{{ next_session.mentorship.mentor.full_name }}</h4>
+                <p class="text-xs text-slate-500 mb-3">{{ next_session.mentorship.mentor.expertise }}</p>
+                <div class="text-xs text-slate-600 space-y-1 mb-4">
+                    <p>📅 {{ next_session.scheduled_at.strftime('%a, %d %b %Y') }}</p>
+                    <p>🕒 {{ next_session.scheduled_at.strftime('%I:%M %p') }} &bull; {{ next_session.duration_minutes }} min</p>
+                    <p>📹 {{ next_session.mode }}</p>
+                </div>
+                <div class="bg-lightBg rounded-xl p-3 text-xs text-slate-700 mb-4"><strong>Topic:</strong> {{ next_session.topic }}</div>
+                <div class="flex flex-wrap gap-2">
+                    <form action="/session/{{ next_session.id }}/cancel" method="post">
+                        <button type="submit" class="text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2 rounded-xl transition">Cancel</button>
+                    </form>
+                </div>
+                {% else %}
+                <p class="text-sm text-slate-500">No upcoming sessions. Book one above to get started.</p>
+                {% endif %}
+            </div>
+
+            <!-- Calendar Widget -->
+            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <h3 class="font-bold text-primary mb-4">{{ month_label }}</h3>
+                <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400 mb-1">
+                    <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                </div>
+                {% for week in calendar_weeks %}
+                <div class="grid grid-cols-7 gap-1 mb-1">
+                    {% for d in week %}
+                    <div class="aspect-square flex items-center justify-center text-xs rounded-lg
+                        {{ 'text-slate-300' if not d.in_month else 'text-slate-700' }}
+                        {{ 'bg-primary text-white font-bold' if d.is_today else '' }}
+                        {{ 'ring-2 ring-secondary' if d.sessions and not d.is_today else '' }}">
+                        {{ d.day }}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+                <div class="flex items-center gap-4 mt-3 text-[10px] text-slate-500">
+                    <span><span class="inline-block w-2 h-2 rounded-full bg-secondary mr-1"></span>Has session</span>
+                    <span><span class="inline-block w-2 h-2 rounded-full bg-primary mr-1"></span>Today</span>
+                </div>
+            </div>
+
+            <!-- Session Summary Widget -->
+            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <h3 class="font-bold text-primary mb-4">Session Summary</h3>
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div class="bg-lightBg rounded-xl p-3 text-center">
+                        <h4 class="text-xl font-bold text-primary">{{ total_count }}</h4>
+                        <p class="text-[11px] text-slate-500">Total</p>
+                    </div>
+                    <div class="bg-lightBg rounded-xl p-3 text-center">
+                        <h4 class="text-xl font-bold text-primary">{{ completed_count }}</h4>
+                        <p class="text-[11px] text-slate-500">Completed</p>
+                    </div>
+                    <div class="bg-lightBg rounded-xl p-3 text-center">
+                        <h4 class="text-xl font-bold text-primary">{{ upcoming_count }}</h4>
+                        <p class="text-[11px] text-slate-500">Upcoming</p>
+                    </div>
+                    <div class="bg-lightBg rounded-xl p-3 text-center">
+                        <h4 class="text-xl font-bold text-primary">{{ cancelled_count }}</h4>
+                        <p class="text-[11px] text-slate-500">Cancelled</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Grid -->
+        <div class="grid lg:grid-cols-2 gap-8">
+
+            <!-- Session History -->
+            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <h3 class="font-bold text-primary mb-4">Session History</h3>
+                <div class="flex gap-2 mb-4 flex-wrap">
+                    <a href="/student/sessions?filter=all" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'all' else 'bg-lightBg text-slate-600' }}">All</a>
+                    <a href="/student/sessions?filter=completed" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'completed' else 'bg-lightBg text-slate-600' }}">Completed</a>
+                    <a href="/student/sessions?filter=upcoming" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'upcoming' else 'bg-lightBg text-slate-600' }}">Upcoming</a>
+                    <a href="/student/sessions?filter=cancelled" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'cancelled' else 'bg-lightBg text-slate-600' }}">Cancelled</a>
+                </div>
+
+                {% if sessions %}
+                <div class="space-y-3">
+                    {% for s in sessions %}
+                    <a href="/student/sessions?filter={{ status_filter }}&session_id={{ s.id }}"
+                       class="block p-4 rounded-2xl border {{ 'border-secondary bg-emerald-50/40' if selected_session and selected_session.id == s.id else 'border-slate-200 bg-lightBg' }}">
+                        <div class="flex items-center justify-between gap-2">
+                            <div>
+                                <h4 class="font-semibold text-primary text-sm">{{ s.topic }}</h4>
+                                <p class="text-xs text-slate-500">Mentor {{ s.mentorship.mentor.full_name }}</p>
+                                <p class="text-[11px] text-slate-400">📅 {{ s.scheduled_at.strftime('%a, %d %b') }} &bull; 🕒 {{ s.scheduled_at.strftime('%I:%M %p') }}</p>
+                            </div>
+                            <span class="text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap
+                                {{ 'bg-emerald-100 text-emerald-700' if s.status == 'completed' else 'bg-blue-100 text-blue-700' if s.status == 'upcoming' else 'bg-red-100 text-red-700' }}">
+                                {{ s.status | capitalize }}
+                            </span>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-sm text-slate-500">No sessions in this filter yet.</p>
+                {% endif %}
+            </div>
+
+            <!-- Session Details -->
+            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <h3 class="font-bold text-primary mb-4">Session Details</h3>
+                {% if selected_session %}
+                <div class="flex items-start justify-between mb-4">
+                    <div>
+                        <h4 class="font-bold text-primary">{{ selected_session.topic }}</h4>
+                        <p class="text-sm text-slate-500">Mentor: {{ selected_session.mentorship.mentor.full_name }}</p>
+                    </div>
+                    <span class="text-xs font-bold px-3 py-1 rounded-full
+                        {{ 'bg-emerald-100 text-emerald-700' if selected_session.status == 'completed' else 'bg-blue-100 text-blue-700' if selected_session.status == 'upcoming' else 'bg-red-100 text-red-700' }}">
+                        {{ selected_session.status | capitalize }}
+                    </span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 text-xs text-slate-600 mb-4">
+                    <div>⏱️ <strong>Duration</strong><p>{{ selected_session.duration_minutes }} min</p></div>
+                    <div>📹 <strong>Mode</strong><p>{{ selected_session.mode }}</p></div>
+                </div>
+
+                {% if selected_session.notes %}
+                <div class="mb-4">
+                    <h5 class="text-xs font-bold text-slate-500 uppercase mb-2">What we covered</h5>
+                    <ul class="text-sm text-slate-700 space-y-1">
+                        {% for line in selected_session.notes.split('\n') %}
+                        {% if line.strip() %}<li>✔ {{ line.strip() }}</li>{% endif %}
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                {% if selected_session.status == 'upcoming' %}
+                <div class="pt-4 border-t border-slate-100 space-y-3">
+                    <form action="/session/{{ selected_session.id }}/reschedule" method="post" class="flex flex-wrap gap-2">
+                        <input type="date" name="date" required class="text-xs border border-slate-300 rounded-xl px-2 py-2">
+                        <input type="time" name="time" required class="text-xs border border-slate-300 rounded-xl px-2 py-2">
+                        <button type="submit" class="text-xs font-bold bg-slate-100 hover:bg-slate-200 text-primary px-3 py-2 rounded-xl">Reschedule</button>
+                    </form>
+                    <form action="/session/{{ selected_session.id }}/cancel" method="post">
+                        <button type="submit" class="text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2 rounded-xl transition">Cancel session</button>
+                    </form>
+                </div>
+                {% endif %}
+                {% else %}
+                <p class="text-sm text-slate-500">Select a session from the history list to see details.</p>
+                {% endif %}
+            </div>
+        </div>
+    </main>
+
+</body>
+</html>

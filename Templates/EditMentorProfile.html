@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Profile - EduConnect</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1E293B',
+                        secondary: '#10B981',
+                        accent: '#FBBF24',
+                        darkNavy: '#0F172A',
+                        lightBg: '#F8FAFC'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-lightBg text-darkNavy font-sans antialiased selection:bg-emerald-100 selection:text-secondary">
+
+    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-96 bg-gradient-to-tr from-blue-100/50 via-emerald-100/30 to-amber-100/30 blur-3xl -z-10 pointer-events-none"></div>
+
+    <!-- Sticky Header Navigation Bar -->
+    <header class="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200/80 shadow-xs">
+        <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+            <a href="/Home" class="flex items-center space-x-3">
+                <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-primary via-slate-800 to-secondary flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-900/10">
+                    M
+                </div>
+                <span class="text-2xl font-black tracking-tight bg-gradient-to-r from-primary to-slate-700 bg-clip-text text-transparent">EduConnect</span>
+            </a>
+            <div class="flex items-center space-x-4">
+                <span class="hidden sm:inline-flex items-center bg-blue-50 text-primary text-xs font-bold px-3 py-1.5 rounded-full">Mentor account</span>
+                <a href="/logout" class="text-sm font-bold bg-primary hover:bg-slate-800 text-white px-6 py-3 rounded-2xl shadow-md transition-all">Logout</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Header -->
+    <section class="relative pt-16 pb-10 lg:pt-20 lg:pb-12 overflow-hidden">
+        <div class="max-w-3xl mx-auto px-6 text-center">
+            <div class="inline-flex items-center space-x-2 bg-white border border-slate-200 shadow-xs px-4 py-1.5 rounded-full mb-6">
+                <span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+                <span class="text-xs font-bold text-slate-700">Edit Profile</span>
+            </div>
+            <h1 class="text-3xl sm:text-4xl font-black text-primary tracking-tight leading-[1.1] mb-3">
+                Update your mentor profile
+            </h1>
+            <p class="text-slate-600 max-w-xl mx-auto font-medium">
+                Changes are saved to your EduConnect account and shown to students right away.
+            </p>
+        </div>
+    </section>
+
+    <!-- Status messages -->
+    {% if error_message %}
+    <div class="max-w-2xl mx-auto px-6 mb-6">
+        <div class="bg-red-50 border border-red-200 text-red-700 text-sm font-semibold px-5 py-3 rounded-2xl">
+            {{ error_message }}
+        </div>
+    </div>
+    {% endif %}
+    {% if success_message %}
+    <div class="max-w-2xl mx-auto px-6 mb-6">
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold px-5 py-3 rounded-2xl">
+            {{ success_message }}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Edit Form -->
+    <section class="pb-24 max-w-2xl mx-auto px-6">
+        <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-8">
+            <form action="/mentor/edit-profile" method="post" class="space-y-6">
+
+                <div>
+                    <label class="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">Full name</label>
+                    <input type="text" name="full_name" value="{{ mentor.full_name }}" required
+                           class="w-full border border-slate-300 rounded-2xl px-4 py-3 text-sm font-semibold text-primary focus:outline-none focus:ring-2 focus:ring-secondary/40 focus:border-secondary">
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">Email</label>
+                    <input type="email" name="email" value="{{ mentor.email }}" required
+                           class="w-full border border-slate-300 rounded-2xl px-4 py-3 text-sm font-semibold text-primary focus:outline-none focus:ring-2 focus:ring-secondary/40 focus:border-secondary">
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">Areas of expertise</label>
+                    <input type="text" name="expertise" value="{{ mentor.expertise }}" placeholder="e.g. Python, System Design, Career Coaching"
+                           class="w-full border border-slate-300 rounded-2xl px-4 py-3 text-sm font-semibold text-primary focus:outline-none focus:ring-2 focus:ring-secondary/40 focus:border-secondary">
+                    <p class="text-xs text-slate-400 font-medium mt-2">Separate tags with commas — this is split into chips on your dashboard.</p>
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">Mentoring format</label>
+                    <select name="mentoring_format"
+                            class="w-full border border-slate-300 rounded-2xl px-4 py-3 text-sm font-semibold text-primary focus:outline-none focus:ring-2 focus:ring-secondary/40 focus:border-secondary">
+                        <option value="Online" {{ 'selected' if mentor.mentoring_format == 'Online' }}>Online</option>
+                        <option value="In-person" {{ 'selected' if mentor.mentoring_format == 'In-person' }}>In-person</option>
+                        <option value="Both" {{ 'selected' if mentor.mentoring_format == 'Both' }}>Both</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-3 pt-4 border-t border-slate-200">
+                    <button type="submit"
+                            class="flex-1 text-sm font-bold text-white bg-primary hover:bg-slate-800 px-6 py-3 rounded-2xl shadow-md transition-all">
+                        Save changes
+                    </button>
+                    <a href="/mentor"
+                       class="text-sm font-bold text-slate-600 hover:text-primary px-6 py-3 rounded-2xl border border-slate-200 transition-all">
+                        Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </section>
+
+</body>
+</html>

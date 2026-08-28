@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Dashboard - MentorBridge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1E293B',
+                        secondary: '#10B981',
+                        accent: '#FBBF24',
+                        darkNavy: '#0F172A',
+                        lightBg: '#F8FAFC'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-lightBg text-darkNavy font-sans antialiased">
+
+    <!-- Sticky Header Navigation Bar -->
+    <header class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
+        <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+            <!-- Logo -->
+            <a href="/Home" class="flex items-center space-x-2">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white font-bold text-xl shadow-md">
+                    M
+                </div>
+                <span class="text-2xl font-extrabold tracking-tight text-primary">MentorBridge</span>
+            </a>
+
+            <!-- Navigation Links -->
+            <nav class="hidden md:flex items-center space-x-8 text-sm font-medium text-slate-600">
+                <a href="/student" class="text-primary font-semibold">Dashboard</a>
+                <a href="/student/sessions" class="hover:text-primary transition">My Sessions</a>
+                <a href="/student/achievements" class="hover:text-primary transition">Achievements</a>
+                <a href="/student/resources" class="hover:text-primary transition">Resources</a>
+            </nav>
+
+            <!-- Actions -->
+            <div class="flex items-center space-x-4">
+                <span class="text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1 rounded-full">Student account</span>
+                <a href="/logout" class="text-xs font-semibold text-slate-500 hover:text-primary">Logout</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Student Dashboard Container -->
+    <main class="max-w-7xl mx-auto px-6 py-10">
+
+        <!-- Welcome Header Banner -->
+        <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm mb-8">
+            <h1 class="text-2xl font-bold text-primary">Welcome, {{ student.full_name }}</h1>
+            <p class="text-slate-500 text-sm mt-1">
+                Goal: <span class="font-semibold text-slate-700">{{ student.goal }}</span>
+                &bull; Preferred mode: <span class="font-semibold text-slate-700">{{ student.learning_mode }}</span>
+            </p>
+        </div>
+
+        <div class="grid lg:grid-cols-3 gap-8">
+
+            <!-- Left / Main column -->
+            <div class="lg:col-span-2 space-y-8">
+
+                <!-- Notifications & Messages Panel -->
+                <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-lg font-bold text-primary">Notifications</h2>
+                        {% if unread_count > 0 %}
+                        <div class="flex items-center gap-3">
+                            <span class="bg-accent text-darkNavy text-xs font-bold px-3 py-1 rounded-full">{{ unread_count }} New</span>
+                            <form action="/notifications/mark-read" method="post">
+                                <button type="submit" class="text-xs font-semibold text-slate-500 hover:text-primary">Mark all read</button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {% if notifications %}
+                    <ul class="space-y-4">
+                        {% for n in notifications %}
+                        <li class="flex items-start gap-3">
+                            {% if not n.is_read %}<span class="mt-1.5 w-2 h-2 rounded-full bg-secondary flex-shrink-0"></span>{% else %}<span class="mt-1.5 w-2 h-2 flex-shrink-0"></span>{% endif %}
+                            <div>
+                                <p class="text-sm text-slate-700">{{ n.message }}</p>
+                                <span class="text-xs text-slate-400">{{ n.created_at.strftime('%d %b, %I:%M %p') }}</span>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-sm text-slate-500">No notifications yet. Connect with a mentor to get started.</p>
+                    {% endif %}
+                </div>
+
+                <!-- Session History & Analytics -->
+                <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-lg font-bold text-primary">Session History &amp; Analytics</h2>
+                        <a href="/student/sessions" class="text-xs font-bold text-secondary hover:text-emerald-700">View All</a>
+                    </div>
+                    <div class="grid grid-cols-3 gap-4 mb-6">
+                        <div class="bg-lightBg rounded-2xl border border-slate-200 p-4 text-center">
+                            <h3 class="text-2xl font-bold text-primary">{{ upcoming_count }}</h3>
+                            <p class="text-xs text-slate-500 mt-1">Upcoming</p>
+                        </div>
+                        <div class="bg-lightBg rounded-2xl border border-slate-200 p-4 text-center">
+                            <h3 class="text-2xl font-bold text-primary">{{ completed_count }}</h3>
+                            <p class="text-xs text-slate-500 mt-1">Completed</p>
+                        </div>
+                        <div class="bg-lightBg rounded-2xl border border-slate-200 p-4 text-center">
+                            <h3 class="text-2xl font-bold text-primary">{{ total_hours }} hrs</h3>
+                            <p class="text-xs text-slate-500 mt-1">Learning time</p>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="flex justify-between text-xs font-semibold text-slate-600 mb-2">
+                            <span>Average progress across your mentors</span>
+                            <span>{{ avg_progress }}%</span>
+                        </label>
+                        <progress value="{{ avg_progress }}" max="100" class="w-full h-3 rounded-full [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-secondary [&::-webkit-progress-bar]:bg-slate-200"></progress>
+                    </div>
+
+                    {% if next_session %}
+                    <div class="mt-6 pt-6 border-t border-slate-100 flex items-center justify-between">
+                        <span class="text-xs text-slate-500">Next session: <strong class="text-primary">{{ next_session.topic }}</strong> with {{ next_session.mentorship.mentor.full_name }} on {{ next_session.scheduled_at.strftime('%d %b, %I:%M %p') }}</span>
+                        <a href="/student/sessions" class="bg-slate-100 hover:bg-slate-200 text-primary text-xs font-bold px-5 py-2.5 rounded-xl transition">View</a>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- My mentors & progress -->
+                <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                    <h2 class="text-lg font-bold text-primary mb-6">My mentors</h2>
+
+                    {% if my_mentorships %}
+                    <div class="space-y-5">
+                        {% for m in my_mentorships %}
+                        <div class="bg-lightBg p-5 rounded-2xl border border-slate-200">
+                            <div class="flex items-center justify-between mb-3">
+                                <div>
+                                    <h3 class="font-bold text-primary text-sm">{{ m.mentor.full_name }}</h3>
+                                    <p class="text-xs text-slate-500">{{ m.mentor.expertise }}</p>
+                                </div>
+                                <span class="text-xs font-bold px-3 py-1 rounded-full
+                                    {{ 'bg-emerald-100 text-emerald-700' if m.status == 'active' else 'bg-slate-200 text-slate-600' }}">
+                                    {{ m.status | capitalize }}
+                                </span>
+                            </div>
+                            <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1">
+                                <span>Progress</span>
+                                <span>{{ m.progress }}%</span>
+                            </div>
+                            <div class="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                                <div class="bg-secondary h-full rounded-full transition-all duration-500" style="width: {{ m.progress }}%;"></div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-slate-500">
+                        You haven't connected with a mentor yet. Pick one from the list on the right to get started.
+                    </p>
+                    {% endif %}
+                </div>
+
+            </div>
+
+            <!-- Right column -->
+            <div class="lg:col-span-1 space-y-6">
+
+                <!-- Resources / Learning Library preview -->
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400">Resources</h2>
+                        <a href="/student/resources" class="text-xs font-bold text-secondary hover:text-emerald-700">Browse All</a>
+                    </div>
+                    {% if recent_resources %}
+                    <div class="space-y-3">
+                        {% for r in recent_resources %}
+                        <a href="{{ r.url }}" target="_blank" rel="noopener" class="block p-3 bg-lightBg rounded-2xl border border-slate-200 hover:border-secondary transition">
+                            <span class="text-xs font-bold text-secondary uppercase">{{ r.resource_type }}</span>
+                            <p class="text-sm font-semibold text-primary">{{ r.title }}</p>
+                            <p class="text-[11px] text-slate-500">Shared by {{ r.mentorship.mentor.full_name }}</p>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-slate-500">Your mentors haven't shared any resources yet.</p>
+                    {% endif %}
+                </div>
+
+                <!-- Achievements & Badges preview -->
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400">Achievements</h2>
+                        <a href="/student/achievements" class="text-xs font-bold text-secondary hover:text-emerald-700">View All</a>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        {% for b in badges %}
+                        <div class="flex flex-col items-center w-16 text-center {{ '' if b.unlocked else 'opacity-40' }}" title="{{ b.desc }}">
+                            <span class="text-2xl">{{ b.icon }}</span>
+                            <span class="text-[10px] font-semibold text-slate-600 mt-1">{{ b.name }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Find a mentor -->
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">Find a mentor</h2>
+
+                    {% if available_mentors %}
+                    <div class="space-y-3">
+                        {% for mentor in available_mentors %}
+                        <div class="p-4 bg-lightBg rounded-2xl border border-slate-200">
+                            <div class="flex items-center justify-between gap-2">
+                                <div>
+                                    <h3 class="font-bold text-primary text-sm">{{ mentor.full_name }}</h3>
+                                    <p class="text-[11px] text-slate-500">{{ mentor.expertise }}</p>
+                                    <span class="inline-block mt-1 text-[10px] font-bold text-secondary bg-emerald-50 px-2 py-0.5 rounded-full">{{ mentor.mentoring_format }}</span>
+                                </div>
+                                <form action="/student/connect/{{ mentor.id }}" method="post">
+                                    <button type="submit" class="text-xs font-bold text-white bg-primary hover:bg-slate-800 px-3 py-1.5 rounded-xl shadow-xs whitespace-nowrap">
+                                        Connect
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-slate-500">You're already connected with every mentor on MentorBridge.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+</body>
+</html>

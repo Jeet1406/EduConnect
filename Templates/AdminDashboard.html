@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - EduConnect</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#1E293B",
+                        secondary: "#10B981",
+                        accent: "#FBBF24",
+                        lightBg: "#F8FAFC"
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-lightBg text-slate-900 font-sans antialiased">
+    <header class="border-b border-slate-200 bg-white">
+        <div class="max-w-6xl mx-auto px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+                <a href="/Home" class="text-2xl font-bold text-primary">EduConnect</a>
+                <p class="text-sm text-slate-500">Admin dashboard</p>
+            </div>
+            <nav class="flex flex-wrap items-center gap-4 text-sm font-semibold text-primary">
+                <span class="rounded-full bg-slate-900 text-white px-3 py-1 text-xs font-bold">
+                    {{ current_user.full_name }}
+                </span>
+                <a href="/logout">Logout</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-6 py-12">
+        <div class="grid sm:grid-cols-2 gap-6 mb-10">
+            <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <p class="text-sm text-slate-500">Total students</p>
+                <p class="mt-2 text-3xl font-bold text-primary">{{ student_count }}</p>
+            </div>
+            <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <p class="text-sm text-slate-500">Total mentors</p>
+                <p class="mt-2 text-3xl font-bold text-primary">{{ mentor_count }}</p>
+            </div>
+        </div>
+
+        <section class="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-10">
+            <div class="px-6 py-5 border-b border-slate-200">
+                <h2 class="text-xl font-bold text-primary">All students</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 border-b border-slate-200 text-slate-600">
+                        <tr>
+                            <th class="text-left px-6 py-4 font-semibold">ID</th>
+                            <th class="text-left px-6 py-4 font-semibold">Name</th>
+                            <th class="text-left px-6 py-4 font-semibold">Email</th>
+                            <th class="text-left px-6 py-4 font-semibold">Goal</th>
+                            <th class="text-left px-6 py-4 font-semibold">Learning Mode</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200">
+                        {% for student in students %}
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-6 py-4 font-semibold text-primary">{{ student.id }}</td>
+                            <td class="px-6 py-4 font-medium">{{ student.full_name }}</td>
+                            <td class="px-6 py-4 text-slate-600">{{ student.email }}</td>
+                            <td class="px-6 py-4 text-slate-600">{{ student.goal }}</td>
+                            <td class="px-6 py-4">
+                                <span class="inline-flex rounded-full bg-blue-100 text-blue-700 px-3 py-1 text-xs font-bold">
+                                    {{ student.learning_mode }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="px-6 py-8 text-center text-slate-500">No students registered yet.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div class="px-6 py-5 border-b border-slate-200">
+                <h2 class="text-xl font-bold text-primary">All mentors</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 border-b border-slate-200 text-slate-600">
+                        <tr>
+                            <th class="text-left px-6 py-4 font-semibold">ID</th>
+                            <th class="text-left px-6 py-4 font-semibold">Name</th>
+                            <th class="text-left px-6 py-4 font-semibold">Email</th>
+                            <th class="text-left px-6 py-4 font-semibold">Expertise</th>
+                            <th class="text-left px-6 py-4 font-semibold">Format</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200">
+                        {% for mentor in mentors %}
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-6 py-4 font-semibold text-primary">{{ mentor.id }}</td>
+                            <td class="px-6 py-4 font-medium">{{ mentor.full_name }}</td>
+                            <td class="px-6 py-4 text-slate-600">{{ mentor.email }}</td>
+                            <td class="px-6 py-4 text-slate-600">{{ mentor.expertise }}</td>
+                            <td class="px-6 py-4">
+                                <span class="inline-flex rounded-full bg-emerald-100 text-emerald-700 px-3 py-1 text-xs font-bold">
+                                    {{ mentor.mentoring_format }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="px-6 py-8 text-center text-slate-500">No mentors registered yet.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

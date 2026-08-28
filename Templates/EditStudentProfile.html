@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Profile - EduConnect</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1E293B',
+                        secondary: '#10B981',
+                        accent: '#FBBF24',
+                        darkNavy: '#0F172A',
+                        lightBg: '#F8FAFC'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-lightBg text-darkNavy font-sans antialiased">
+
+    <!-- Sticky Header Navigation Bar -->
+    <header class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
+        <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+            <a href="/Home" class="flex items-center space-x-2">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white font-bold text-xl shadow-md">
+                    M
+                </div>
+                <span class="text-2xl font-extrabold tracking-tight text-primary">EduConnect</span>
+            </a>
+            <div class="flex items-center space-x-4">
+                <span class="text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1 rounded-full">Student account</span>
+                <a href="/logout" class="text-xs font-semibold text-slate-500 hover:text-primary">Logout</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-2xl mx-auto px-6 py-10">
+
+        <div class="mb-8">
+            <h1 class="text-2xl font-bold text-primary">Edit your profile</h1>
+            <p class="text-slate-500 text-sm mt-1">Keep your goal and learning preferences up to date.</p>
+        </div>
+
+        <!-- Status messages -->
+        {% if error_message %}
+        <div class="mb-6">
+            <div class="bg-red-50 border border-red-200 text-red-700 text-sm font-semibold px-5 py-3 rounded-2xl">
+                {{ error_message }}
+            </div>
+        </div>
+        {% endif %}
+        {% if success_message %}
+        <div class="mb-6">
+            <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold px-5 py-3 rounded-2xl">
+                {{ success_message }}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+            <form action="/student/edit-profile" method="post" class="space-y-6">
+
+                <div>
+                    <label class="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">Full name</label>
+                    <input type="text" name="full_name" value="{{ student.full_name }}" required
+                           class="w-full border border-slate-300 rounded-2xl px-4 py-3 text-sm font-semibold text-primary focus:outline-none focus:ring-2 focus:ring-secondary/40 focus:border-secondary">
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">Email</label>
+                    <input type="email" name="email" value="{{ student.email }}" required
+                           class="w-full border border-slate-300 rounded-2xl px-4 py-3 text-sm font-semibold text-primary focus:outline-none focus:ring-2 focus:ring-secondary/40 focus:border-secondary">
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">Goal</label>
+                    <input type="text" name="goal" value="{{ student.goal }}" placeholder="e.g. Crack DSA interviews"
+                           class="w-full border border-slate-300 rounded-2xl px-4 py-3 text-sm font-semibold text-primary focus:outline-none focus:ring-2 focus:ring-secondary/40 focus:border-secondary">
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">Preferred learning mode</label>
+                    <select name="learning_mode"
+                            class="w-full border border-slate-300 rounded-2xl px-4 py-3 text-sm font-semibold text-primary focus:outline-none focus:ring-2 focus:ring-secondary/40 focus:border-secondary">
+                        <option value="Online" {{ 'selected' if student.learning_mode == 'Online' }}>Online</option>
+                        <option value="In-person" {{ 'selected' if student.learning_mode == 'In-person' }}>In-person</option>
+                        <option value="Both" {{ 'selected' if student.learning_mode == 'Both' }}>Both</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-3 pt-4 border-t border-slate-200">
+                    <button type="submit"
+                            class="flex-1 text-sm font-bold text-white bg-primary hover:bg-slate-800 px-6 py-3 rounded-2xl shadow-md transition-all">
+                        Save changes
+                    </button>
+                    <a href="/student"
+                       class="text-sm font-bold text-slate-600 hover:text-primary px-6 py-3 rounded-2xl border border-slate-200 transition-all">
+                        Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </main>
+
+</body>
+</html>
