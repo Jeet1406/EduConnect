@@ -19,25 +19,44 @@
             }
         }
     </script>
+    <style>
+        thead.sticky-head th { position: sticky; top: 0; z-index: 10; }
+        th[data-sort] { cursor: pointer; user-select: none; }
+        th[data-sort]:hover { color: #1E293B; }
+        th[data-sort] .sort-arrow { display: inline-block; margin-left: 4px; opacity: 0.35; font-size: 0.7em; }
+        th[data-sort].sort-asc .sort-arrow,
+        th[data-sort].sort-desc .sort-arrow { opacity: 1; }
+        th[data-sort].sort-asc .sort-arrow::after { content: "▲"; }
+        th[data-sort].sort-desc .sort-arrow::after { content: "▼"; }
+        th[data-sort]:not(.sort-asc):not(.sort-desc) .sort-arrow::after { content: "▲▼"; }
+        .row-hidden { display: none !important; }
+    </style>
 </head>
 <body class="bg-lightBg text-slate-900 font-sans antialiased">
     <header class="border-b border-slate-200 bg-white">
         <div class="max-w-6xl mx-auto px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-                <a href="/Home" class="text-2xl font-bold text-primary">EduConnect</a>
+                <a href="/Home" class="flex items-center space-x-2">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white font-bold text-xl shadow-md">
+                    <img src="{{ url_for('static', filename='logo.jpg') }}" alt="EduConnect logo" class="w-10 h-10 rounded-xl object-cover">
+                </div>
+                <span class="text-2xl font-extrabold tracking-tight text-primary">EduConnect</span>
+            </a>
                 <p class="text-sm text-slate-500">Admin dashboard</p>
             </div>
-            <nav class="flex flex-wrap items-center gap-4 text-sm font-semibold text-primary">
+            <nav class="flex flex-wrap items-center gap-4 text-sm font-semibold text-primary" aria-label="Account">
                 <span class="rounded-full bg-slate-900 text-white px-3 py-1 text-xs font-bold">
                     {{ current_user.full_name }}
                 </span>
-                <a href="/logout">Logout</a>
+                <a href="/logout" aria-label="Log out of admin dashboard">Logout</a>
             </nav>
         </div>
     </header>
 
     <main class="max-w-6xl mx-auto px-6 py-12">
-        <div class="grid sm:grid-cols-2 gap-6 mb-10">
+
+        <!-- Stat cards -->
+        <div class="grid sm:grid-cols-4 gap-6 mb-10">
             <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                 <p class="text-sm text-slate-500">Total students</p>
                 <p class="mt-2 text-3xl font-bold text-primary">{{ student_count }}</p>
@@ -46,83 +65,251 @@
                 <p class="text-sm text-slate-500">Total mentors</p>
                 <p class="mt-2 text-3xl font-bold text-primary">{{ mentor_count }}</p>
             </div>
+            <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <p class="text-sm text-slate-500">Unmatched students</p>
+                <!-- Pass unmatched_count from your route (students with no Mentorship row).
+                     Defaults to 0 if the route doesn't provide it yet, so nothing breaks. -->
+                <p class="mt-2 text-3xl font-bold text-accent">{{ unmatched_count|default(0) }}</p>
+            </div>
+            <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <p class="text-sm text-slate-500">Pending mentor approvals</p>
+                <!-- Pass pending_mentor_count from your route (mentors with status == 'Pending').
+                     Defaults to 0 if the route doesn't provide it yet, so nothing breaks. -->
+                <p class="mt-2 text-3xl font-bold text-secondary">{{ pending_mentor_count|default(0) }}</p>
+            </div>
         </div>
 
-        <section class="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-10">
-            <div class="px-6 py-5 border-b border-slate-200">
+        <!-- Tabs -->
+        <div class="flex gap-2 mb-6 border-b border-slate-200" role="tablist">
+            <button id="tab-btn-students" role="tab" aria-selected="true" aria-controls="panel-students"
+                onclick="switchTab('students')"
+                class="tab-btn px-5 py-3 text-sm font-bold border-b-2 border-primary text-primary">
+                Students
+            </button>
+            <button id="tab-btn-mentors" role="tab" aria-selected="false" aria-controls="panel-mentors"
+                onclick="switchTab('mentors')"
+                class="tab-btn px-5 py-3 text-sm font-bold border-b-2 border-transparent text-slate-500">
+                Mentors
+            </button>
+        </div>
+
+        <!-- STUDENTS PANEL -->
+        <section id="panel-students" role="tabpanel" aria-labelledby="tab-btn-students"
+            class="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-10">
+            <div class="px-6 py-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <h2 class="text-xl font-bold text-primary">All students</h2>
+                <div class="flex items-center gap-2">
+                    <label for="student-search" class="sr-only">Search students</label>
+                    <input id="student-search" type="text" placeholder="Search by name, email, or goal..."
+                        oninput="filterTable('students-table', this.value)"
+                        class="w-full sm:w-64 rounded-full border border-slate-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+                    <a href="/admin/students/new"
+                        class="whitespace-nowrap rounded-full bg-primary text-white px-4 py-2 text-xs font-bold hover:bg-primary/90">
+                        + Add student
+                    </a>
+                </div>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead class="bg-slate-50 border-b border-slate-200 text-slate-600">
+            <div class="overflow-x-auto max-h-[520px] overflow-y-auto">
+                <table id="students-table" class="w-full text-sm">
+                    <thead class="sticky-head bg-slate-50 border-b border-slate-200 text-slate-600">
                         <tr>
-                            <th class="text-left px-6 py-4 font-semibold">ID</th>
-                            <th class="text-left px-6 py-4 font-semibold">Name</th>
-                            <th class="text-left px-6 py-4 font-semibold">Email</th>
-                            <th class="text-left px-6 py-4 font-semibold">Goal</th>
-                            <th class="text-left px-6 py-4 font-semibold">Learning Mode</th>
+                            <th scope="col" class="text-left px-6 py-4 font-semibold" data-sort="text">ID<span class="sort-arrow"></span></th>
+                            <th scope="col" class="text-left px-6 py-4 font-semibold" data-sort="text">Name<span class="sort-arrow"></span></th>
+                            <th scope="col" class="text-left px-6 py-4 font-semibold" data-sort="text">Email<span class="sort-arrow"></span></th>
+                            <th scope="col" class="text-left px-6 py-4 font-semibold" data-sort="text">Goal<span class="sort-arrow"></span></th>
+                            <th scope="col" class="text-left px-6 py-4 font-semibold" data-sort="text">Learning Mode<span class="sort-arrow"></span></th>
+                            <th scope="col" class="text-left px-6 py-4 font-semibold">Status</th>
+                            <th scope="col" class="text-right px-6 py-4 font-semibold">Actions</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-200">
+                    <tbody class="divide-y divide-slate-200" id="students-tbody">
                         {% for student in students %}
+                        {% set st = student.status if student.status is defined else 'Active' %}
                         <tr class="hover:bg-slate-50">
                             <td class="px-6 py-4 font-semibold text-primary">{{ student.id }}</td>
-                            <td class="px-6 py-4 font-medium">{{ student.full_name }}</td>
+                            <td class="px-6 py-4 font-medium">
+                                <div class="flex items-center gap-3">
+                                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white text-xs font-bold">{{ student.full_name[:2]|upper }}</span>
+                                    {{ student.full_name }}
+                                </div>
+                            </td>
                             <td class="px-6 py-4 text-slate-600">{{ student.email }}</td>
                             <td class="px-6 py-4 text-slate-600">{{ student.goal }}</td>
+                            <td class="px-6 py-4"><span class="inline-flex rounded-full bg-blue-100 text-blue-800 px-3 py-1 text-xs font-bold">{{ student.learning_mode }}</span></td>
                             <td class="px-6 py-4">
-                                <span class="inline-flex rounded-full bg-blue-100 text-blue-700 px-3 py-1 text-xs font-bold">
-                                    {{ student.learning_mode }}
+                                {% if st == 'Active' %}
+                                <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-emerald-100 text-emerald-800">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-600"></span>{{ st }}
                                 </span>
+                                {% elif st == 'Pending' %}
+                                <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-amber-100 text-amber-800">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-amber-600"></span>{{ st }}
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-slate-200 text-slate-700">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-slate-500"></span>{{ st }}
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 text-right whitespace-nowrap">
+                                <a href="/admin/students/{{ student.id }}" class="text-primary font-semibold hover:underline mr-3">View</a>
+                                <a href="/admin/students/{{ student.id }}/edit" class="text-slate-600 font-semibold hover:underline mr-3">Edit</a>
+                                <a href="#" onclick="return confirm('Deactivate {{ student.full_name }}?');" class="text-red-600 font-semibold hover:underline">Deactivate</a>
                             </td>
                         </tr>
                         {% else %}
-                        <tr>
-                            <td colspan="5" class="px-6 py-8 text-center text-slate-500">No students registered yet.</td>
-                        </tr>
+                        <tr><td colspan="7" class="px-6 py-14 text-center text-slate-500">
+                            <div class="flex flex-col items-center gap-2">
+                                <span class="text-3xl">🗂️</span>
+                                <p class="font-semibold text-slate-600">No students registered yet</p>
+                                <p class="text-sm">Once students sign up, they'll show up here.</p>
+                            </div>
+                        </td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
+                <p id="students-empty-filtered" class="hidden px-6 py-10 text-center text-slate-500 text-sm">No students match your search.</p>
             </div>
         </section>
 
-        <section class="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            <div class="px-6 py-5 border-b border-slate-200">
+        <!-- MENTORS PANEL -->
+        <section id="panel-mentors" role="tabpanel" aria-labelledby="tab-btn-mentors"
+            class="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden hidden">
+            <div class="px-6 py-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <h2 class="text-xl font-bold text-primary">All mentors</h2>
+                <div class="flex items-center gap-2">
+                    <label for="mentor-search" class="sr-only">Search mentors</label>
+                    <input id="mentor-search" type="text" placeholder="Search by name, email, or expertise..."
+                        oninput="filterTable('mentors-table', this.value)"
+                        class="w-full sm:w-64 rounded-full border border-slate-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+                    <a href="/admin/mentors/new"
+                        class="whitespace-nowrap rounded-full bg-primary text-white px-4 py-2 text-xs font-bold hover:bg-primary/90">
+                        + Add mentor
+                    </a>
+                </div>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead class="bg-slate-50 border-b border-slate-200 text-slate-600">
+            <div class="overflow-x-auto max-h-[520px] overflow-y-auto">
+                <table id="mentors-table" class="w-full text-sm">
+                    <thead class="sticky-head bg-slate-50 border-b border-slate-200 text-slate-600">
                         <tr>
-                            <th class="text-left px-6 py-4 font-semibold">ID</th>
-                            <th class="text-left px-6 py-4 font-semibold">Name</th>
-                            <th class="text-left px-6 py-4 font-semibold">Email</th>
-                            <th class="text-left px-6 py-4 font-semibold">Expertise</th>
-                            <th class="text-left px-6 py-4 font-semibold">Format</th>
+                            <th scope="col" class="text-left px-6 py-4 font-semibold" data-sort="text">ID<span class="sort-arrow"></span></th>
+                            <th scope="col" class="text-left px-6 py-4 font-semibold" data-sort="text">Name<span class="sort-arrow"></span></th>
+                            <th scope="col" class="text-left px-6 py-4 font-semibold" data-sort="text">Email<span class="sort-arrow"></span></th>
+                            <th scope="col" class="text-left px-6 py-4 font-semibold" data-sort="text">Expertise<span class="sort-arrow"></span></th>
+                            <th scope="col" class="text-left px-6 py-4 font-semibold" data-sort="text">Format<span class="sort-arrow"></span></th>
+                            <th scope="col" class="text-left px-6 py-4 font-semibold">Status</th>
+                            <th scope="col" class="text-right px-6 py-4 font-semibold">Actions</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-200">
+                    <tbody class="divide-y divide-slate-200" id="mentors-tbody">
                         {% for mentor in mentors %}
+                        {% set st = mentor.status if mentor.status is defined else 'Active' %}
                         <tr class="hover:bg-slate-50">
                             <td class="px-6 py-4 font-semibold text-primary">{{ mentor.id }}</td>
-                            <td class="px-6 py-4 font-medium">{{ mentor.full_name }}</td>
+                            <td class="px-6 py-4 font-medium">
+                                <div class="flex items-center gap-3">
+                                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-white text-xs font-bold">{{ mentor.full_name[:2]|upper }}</span>
+                                    {{ mentor.full_name }}
+                                </div>
+                            </td>
                             <td class="px-6 py-4 text-slate-600">{{ mentor.email }}</td>
                             <td class="px-6 py-4 text-slate-600">{{ mentor.expertise }}</td>
+                            <td class="px-6 py-4"><span class="inline-flex rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-xs font-bold">{{ mentor.mentoring_format }}</span></td>
                             <td class="px-6 py-4">
-                                <span class="inline-flex rounded-full bg-emerald-100 text-emerald-700 px-3 py-1 text-xs font-bold">
-                                    {{ mentor.mentoring_format }}
+                                {% if st == 'Active' %}
+                                <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-emerald-100 text-emerald-800">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-600"></span>{{ st }}
                                 </span>
+                                {% elif st == 'Pending' %}
+                                <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-amber-100 text-amber-800">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-amber-600"></span>{{ st }}
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-slate-200 text-slate-700">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-slate-500"></span>{{ st }}
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 text-right whitespace-nowrap">
+                                <a href="/admin/mentors/{{ mentor.id }}" class="text-primary font-semibold hover:underline mr-3">View</a>
+                                <a href="/admin/mentors/{{ mentor.id }}/edit" class="text-slate-600 font-semibold hover:underline mr-3">Edit</a>
+                                <a href="#" onclick="return confirm('Deactivate {{ mentor.full_name }}?');" class="text-red-600 font-semibold hover:underline">Deactivate</a>
                             </td>
                         </tr>
                         {% else %}
-                        <tr>
-                            <td colspan="5" class="px-6 py-8 text-center text-slate-500">No mentors registered yet.</td>
-                        </tr>
+                        <tr><td colspan="7" class="px-6 py-14 text-center text-slate-500">
+                            <div class="flex flex-col items-center gap-2">
+                                <span class="text-3xl">🗂️</span>
+                                <p class="font-semibold text-slate-600">No mentors registered yet</p>
+                                <p class="text-sm">Once mentors sign up, they'll show up here.</p>
+                            </div>
+                        </td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
+                <p id="mentors-empty-filtered" class="hidden px-6 py-10 text-center text-slate-500 text-sm">No mentors match your search.</p>
             </div>
         </section>
+
     </main>
+
+    <script>
+        // ---------- Tabs ----------
+        function switchTab(tab) {
+            const panels = { students: document.getElementById('panel-students'), mentors: document.getElementById('panel-mentors') };
+            const buttons = { students: document.getElementById('tab-btn-students'), mentors: document.getElementById('tab-btn-mentors') };
+            Object.keys(panels).forEach(key => {
+                const isActive = key === tab;
+                panels[key].classList.toggle('hidden', !isActive);
+                buttons[key].setAttribute('aria-selected', isActive);
+                buttons[key].classList.toggle('border-primary', isActive);
+                buttons[key].classList.toggle('text-primary', isActive);
+                buttons[key].classList.toggle('border-transparent', !isActive);
+                buttons[key].classList.toggle('text-slate-500', !isActive);
+            });
+        }
+
+        // ---------- Search / filter (operates on the server-rendered rows above) ----------
+        function filterTable(tableId, query) {
+            const table = document.getElementById(tableId);
+            const rows = table.querySelectorAll('tbody tr');
+            const q = query.trim().toLowerCase();
+            let visibleCount = 0;
+            rows.forEach(row => {
+                const matches = row.textContent.toLowerCase().includes(q);
+                row.classList.toggle('row-hidden', !matches);
+                if (matches) visibleCount++;
+            });
+            const emptyMsgId = tableId === 'students-table' ? 'students-empty-filtered' : 'mentors-empty-filtered';
+            document.getElementById(emptyMsgId).classList.toggle('hidden', visibleCount !== 0 || rows.length === 0);
+        }
+
+        // ---------- Sortable columns (operates on the server-rendered rows above) ----------
+        function attachSort() {
+            document.querySelectorAll('th[data-sort]').forEach(th => {
+                th.addEventListener('click', () => {
+                    const table = th.closest('table');
+                    const tbody = table.querySelector('tbody');
+                    const headerRow = th.parentElement;
+                    const columnIndex = Array.from(headerRow.children).indexOf(th);
+                    const isAsc = !th.classList.contains('sort-asc');
+                    headerRow.querySelectorAll('th').forEach(otherTh => otherTh.classList.remove('sort-asc', 'sort-desc'));
+                    th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
+                    const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.children.length > 1);
+                    rows.sort((a, b) => {
+                        const aText = a.children[columnIndex].textContent.trim().toLowerCase();
+                        const bText = b.children[columnIndex].textContent.trim().toLowerCase();
+                        const aNum = parseFloat(aText), bNum = parseFloat(bText);
+                        const bothNumeric = !isNaN(aNum) && !isNaN(bNum);
+                        const comparison = bothNumeric ? aNum - bNum : aText.localeCompare(bText);
+                        return isAsc ? comparison : -comparison;
+                    });
+                    rows.forEach(row => tbody.appendChild(row));
+                });
+            });
+        }
+
+        attachSort();
+    </script>
 </body>
 </html>

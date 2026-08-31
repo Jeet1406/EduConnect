@@ -23,7 +23,12 @@
 <body class="bg-lightBg text-slate-900 font-sans antialiased min-h-screen">
     <header class="border-b border-slate-200 bg-white">
         <div class="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
-            <a href="/Home" class="text-2xl font-bold text-primary">EduConnect</a>
+            <a href="/Home" class="flex items-center space-x-2">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white font-bold text-xl shadow-md">
+                    <img src="{{ url_for('static', filename='logo.jpg') }}" alt="EduConnect logo" class="w-10 h-10 rounded-xl object-cover">
+                </div>
+                <span class="text-2xl font-extrabold tracking-tight text-primary">EduConnect</span>
+            </a>
             <span class="text-xs font-bold bg-slate-900 text-white px-3 py-1 rounded-full">Admin area</span>
         </div>
     </header>
