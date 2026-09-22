@@ -4,6 +4,7 @@ from pathlib import Path
 
 from flask import Flask, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -20,6 +21,49 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 ADMIN_SETUP_KEY = "CHANGE-THIS-TO-YOUR-OWN-SECRET-KEY"
 
 db = SQLAlchemy(app)
+
+
+# ---------------------------------------------------------------------------
+# Session status lifecycle
+#
+# pending_mentor         student booked; mentor must confirm or decline
+# confirmed              both sides agreed; Join button is live
+# declined               mentor refused; student can rebook
+# reschedule_by_mentor   mentor proposed a new time; student must accept
+# reschedule_by_student  student proposed a new time; mentor must accept
+# completed / cancelled  terminal
+# ---------------------------------------------------------------------------
+STATUS_PENDING_MENTOR = "pending_mentor"
+STATUS_CONFIRMED = "confirmed"
+STATUS_DECLINED = "declined"
+STATUS_RESCHEDULE_BY_MENTOR = "reschedule_by_mentor"
+STATUS_RESCHEDULE_BY_STUDENT = "reschedule_by_student"
+STATUS_COMPLETED = "completed"
+STATUS_CANCELLED = "cancelled"
+
+# Still on the calendar — not finished, not called off.
+LIVE_STATUSES = {
+    STATUS_PENDING_MENTOR,
+    STATUS_CONFIRMED,
+    STATUS_RESCHEDULE_BY_MENTOR,
+    STATUS_RESCHEDULE_BY_STUDENT,
+}
+# Waiting on somebody to press a button.
+AWAITING_STATUSES = {
+    STATUS_PENDING_MENTOR,
+    STATUS_RESCHEDULE_BY_MENTOR,
+    STATUS_RESCHEDULE_BY_STUDENT,
+}
+
+STATUS_LABELS = {
+    STATUS_PENDING_MENTOR: "Awaiting mentor confirmation",
+    STATUS_CONFIRMED: "Confirmed",
+    STATUS_DECLINED: "Declined by mentor",
+    STATUS_RESCHEDULE_BY_MENTOR: "Mentor proposed a new time",
+    STATUS_RESCHEDULE_BY_STUDENT: "Student proposed a new time",
+    STATUS_COMPLETED: "Completed",
+    STATUS_CANCELLED: "Cancelled",
+}
 
 
 class Student(db.Model):
@@ -64,11 +108,33 @@ class Session(db.Model):
     duration_minutes = db.Column(db.Integer, nullable=False, default=60)
     mode = db.Column(db.String(50), nullable=False, default="Google Meet")
     topic = db.Column(db.String(200), nullable=False)
-    status = db.Column(db.String(20), nullable=False, default="upcoming")  # upcoming / completed / cancelled
+    status = db.Column(db.String(30), nullable=False, default=STATUS_PENDING_MENTOR)
     notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
+    # A reschedule that has been offered but not yet answered. The original
+    # scheduled_at stays untouched until the other side accepts, so declining
+    # costs nothing.
+    proposed_at = db.Column(db.DateTime, nullable=True)
+    proposed_by = db.Column(db.String(10), nullable=True)  # "student" or "mentor"
+
     mentorship = db.relationship("Mentorship", backref="sessions")
+
+    @property
+    def status_label(self):
+        return STATUS_LABELS.get(self.status, self.status)
+
+    @property
+    def is_live(self):
+        return self.status in LIVE_STATUSES
+
+    def needs_action_from(self, role):
+        """True when this role is the one holding up the session."""
+        if role == "mentor":
+            return self.status in {STATUS_PENDING_MENTOR, STATUS_RESCHEDULE_BY_STUDENT}
+        if role == "student":
+            return self.status in {STATUS_RESCHEDULE_BY_MENTOR, STATUS_DECLINED}
+        return False
 
 
 class Resource(db.Model):
@@ -90,9 +156,37 @@ class Notification(db.Model):
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     is_read = db.Column(db.Boolean, nullable=False, default=False)
 
+    # Lets the dashboard render Confirm / Decline / Accept buttons directly
+    # on the notification instead of making the user hunt for the session.
+    session_id = db.Column(db.Integer, db.ForeignKey("session.id"), nullable=True)
+
+    session_row = db.relationship("Session")
+
+
+def migrate_sqlite_schema():
+    """SQLite won't add columns to an existing table on create_all(), so add
+    the new session/notification columns by hand if the database predates them.
+    Safe to run on every boot — each step checks before it acts."""
+    with db.engine.begin() as conn:
+        session_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(session)"))}
+        if session_cols:
+            if "proposed_at" not in session_cols:
+                conn.execute(text("ALTER TABLE session ADD COLUMN proposed_at DATETIME"))
+            if "proposed_by" not in session_cols:
+                conn.execute(text("ALTER TABLE session ADD COLUMN proposed_by VARCHAR(10)"))
+            # Sessions booked under the old model were implicitly agreed.
+            conn.execute(text(
+                "UPDATE session SET status = :new WHERE status = :old"
+            ), {"new": STATUS_CONFIRMED, "old": "upcoming"})
+
+        notif_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(notification)"))}
+        if notif_cols and "session_id" not in notif_cols:
+            conn.execute(text("ALTER TABLE notification ADD COLUMN session_id INTEGER"))
+
 
 with app.app_context():
     db.create_all()
+    migrate_sqlite_schema()
 
 
 def admin_required():
@@ -100,10 +194,15 @@ def admin_required():
     return session.get("current_role") == "admin" and bool(session.get("current_user"))
 
 
-def add_notification(role, recipient_id, message):
+def add_notification(role, recipient_id, message, session_id=None):
     """Create a notification for a student or mentor. Does not commit —
     caller is expected to commit alongside whatever else it just changed."""
-    db.session.add(Notification(recipient_role=role, recipient_id=recipient_id, message=message))
+    db.session.add(Notification(
+        recipient_role=role,
+        recipient_id=recipient_id,
+        message=message,
+        session_id=session_id,
+    ))
 
 
 def get_owned_mentorship(mentorship_id):
@@ -137,21 +236,44 @@ def get_owned_session(session_id):
     return session_row, mentorship
 
 
-def compute_student_badges(mentorships_count, completed_sessions_count, total_hours, resources_count):
-    """All thresholds here are just game-style design choices — but every
-    number fed in is a real count pulled from the database, never invented."""
-    return [
-        {"name": "Connected!", "desc": "Connect with your first mentor", "icon": "🤝",
-         "unlocked": mentorships_count >= 1},
-        {"name": "Fast Learner", "desc": "Complete 5 sessions", "icon": "⚡",
-         "unlocked": completed_sessions_count >= 5},
-        {"name": "Dedicated", "desc": "Complete 20 sessions", "icon": "🎯",
-         "unlocked": completed_sessions_count >= 20},
-        {"name": "Scholar", "desc": "Learn for 10+ hours", "icon": "🎓",
-         "unlocked": total_hours >= 10},
-        {"name": "Knowledge Seeker", "desc": "Explore 5 resources", "icon": "📖",
-         "unlocked": resources_count >= 5},
-    ]
+def parse_datetime(date_str, time_str):
+    try:
+        return datetime.strptime(f"{date_str.strip()} {time_str.strip()}", "%Y-%m-%d %H:%M")
+    except ValueError:
+        return None
+
+
+def back_to_dashboard():
+    """Both roles land back on their own dashboard after acting on a session.
+    For students this preserves whichever tab the action was taken from
+    (each session/resource form carries a hidden `return_tab` field) so a
+    Confirm or Cancel click doesn't bounce them back to Overview."""
+    if session.get("current_role") == "student":
+        tab = request.form.get("return_tab", "sessions")
+        return redirect(url_for("student_page", tab=tab))
+    return redirect(url_for("mentor_page"))
+
+
+def build_calendar_weeks(sessions):
+    """Real calendar grid for the current month, marking days that actually
+    have sessions on them."""
+    today = date.today()
+    sessions_by_day = {}
+    for s in sessions:
+        sessions_by_day.setdefault(s.scheduled_at.date(), []).append(s)
+
+    weeks, week = [], []
+    for day in Calendar(firstweekday=6).itermonthdates(today.year, today.month):
+        week.append({
+            "day": day.day,
+            "in_month": day.month == today.month,
+            "is_today": day == today,
+            "sessions": sessions_by_day.get(day, []),
+        })
+        if len(week) == 7:
+            weeks.append(week)
+            week = []
+    return weeks, today.strftime("%B %Y")
 
 
 @app.route("/")
@@ -317,6 +439,8 @@ def mentors_list_page():
 
 @app.route("/student")
 def student_page():
+    """One merged dashboard: overview, sessions and resources as tabs.
+    Everything below is a live query — nothing on this page is hardcoded."""
     if session.get("current_role") != "student" or not session.get("current_user"):
         return redirect(url_for("login_page"))
 
@@ -335,68 +459,6 @@ def student_page():
     )
 
     all_sessions = (
-        Session.query.filter(Session.mentorship_id.in_(mentorship_ids)).all() if mentorship_ids else []
-    )
-    upcoming_sessions = [s for s in all_sessions if s.status == "upcoming"]
-    completed_sessions = [s for s in all_sessions if s.status == "completed"]
-    cancelled_sessions = [s for s in all_sessions if s.status == "cancelled"]
-    total_hours = round(sum(s.duration_minutes for s in completed_sessions) / 60, 1)
-    next_session = min(upcoming_sessions, key=lambda s: s.scheduled_at) if upcoming_sessions else None
-
-    all_resources = (
-        Resource.query.filter(Resource.mentorship_id.in_(mentorship_ids))
-        .order_by(Resource.uploaded_at.desc())
-        .all()
-        if mentorship_ids
-        else []
-    )
-
-    notifications = (
-        Notification.query.filter_by(recipient_role="student", recipient_id=student.id)
-        .order_by(Notification.created_at.desc())
-        .limit(5)
-        .all()
-    )
-    unread_count = Notification.query.filter_by(
-        recipient_role="student", recipient_id=student.id, is_read=False
-    ).count()
-
-    avg_progress = round(sum(m.progress for m in my_mentorships) / len(my_mentorships)) if my_mentorships else 0
-    badges = compute_student_badges(len(my_mentorships), len(completed_sessions), total_hours, len(all_resources))
-
-    return render_template(
-        "Student.html",
-        student=student,
-        my_mentorships=my_mentorships,
-        available_mentors=available_mentors,
-        next_session=next_session,
-        upcoming_count=len(upcoming_sessions),
-        completed_count=len(completed_sessions),
-        cancelled_count=len(cancelled_sessions),
-        total_hours=total_hours,
-        avg_progress=avg_progress,
-        recent_resources=all_resources[:3],
-        notifications=notifications,
-        unread_count=unread_count,
-        badges=badges,
-        current_user=session.get("current_user"),
-        current_role=session.get("current_role"),
-    )
-
-
-@app.route("/student/sessions")
-def student_sessions_page():
-    if session.get("current_role") != "student" or not session.get("current_user"):
-        return redirect(url_for("login_page"))
-
-    student = Student.query.get(session["current_user"]["id"])
-    if student is None:
-        session.clear()
-        return redirect(url_for("login_page"))
-
-    my_mentorships = Mentorship.query.filter_by(student_id=student.id).all()
-    mentorship_ids = [m.id for m in my_mentorships]
-    all_sessions = (
         Session.query.filter(Session.mentorship_id.in_(mentorship_ids))
         .order_by(Session.scheduled_at.desc())
         .all()
@@ -404,108 +466,37 @@ def student_sessions_page():
         else []
     )
 
-    status_filter = request.args.get("filter", "all")
-    if status_filter not in {"upcoming", "completed", "cancelled"}:
-        status_filter = "all"
-    filtered_sessions = (
-        all_sessions if status_filter == "all" else [s for s in all_sessions if s.status == status_filter]
-    )
+    confirmed_sessions = [s for s in all_sessions if s.status == STATUS_CONFIRMED]
+    completed_sessions = [s for s in all_sessions if s.status == STATUS_COMPLETED]
+    awaiting_sessions = [s for s in all_sessions if s.status in AWAITING_STATUSES]
+    cancelled_sessions = [s for s in all_sessions if s.status in {STATUS_CANCELLED, STATUS_DECLINED}]
+    action_sessions = [s for s in all_sessions if s.needs_action_from("student")]
 
-    upcoming_sessions = [s for s in all_sessions if s.status == "upcoming"]
-    next_session = min(upcoming_sessions, key=lambda s: s.scheduled_at) if upcoming_sessions else None
+    total_hours = round(sum(s.duration_minutes for s in completed_sessions) / 60, 1)
+    next_session = min(confirmed_sessions, key=lambda s: s.scheduled_at) if confirmed_sessions else None
+
+    # Sessions tab filter
+    status_filter = request.args.get("filter", "all")
+    if status_filter == "action":
+        filtered_sessions = action_sessions
+    elif status_filter == "confirmed":
+        filtered_sessions = confirmed_sessions
+    elif status_filter == "completed":
+        filtered_sessions = completed_sessions
+    elif status_filter == "cancelled":
+        filtered_sessions = cancelled_sessions
+    else:
+        status_filter = "all"
+        filtered_sessions = all_sessions
 
     selected_id = request.args.get("session_id", type=int)
     selected_session = next((s for s in all_sessions if s.id == selected_id), None) if selected_id else None
     if selected_session is None and filtered_sessions:
         selected_session = filtered_sessions[0]
 
-    # Real calendar grid for the current month, marking days that actually have sessions.
-    today = date.today()
-    weeks = []
-    week = []
-    sessions_by_day = {}
-    for s in all_sessions:
-        sessions_by_day.setdefault(s.scheduled_at.date(), []).append(s)
+    calendar_weeks, month_label = build_calendar_weeks([s for s in all_sessions if s.is_live])
 
-    for day in Calendar(firstweekday=6).itermonthdates(today.year, today.month):
-        week.append({
-            "day": day.day,
-            "in_month": day.month == today.month,
-            "is_today": day == today,
-            "sessions": sessions_by_day.get(day, []),
-        })
-        if len(week) == 7:
-            weeks.append(week)
-            week = []
-
-    return render_template(
-        "StudentSessions.html",
-        student=student,
-        my_mentorships=my_mentorships,
-        sessions=filtered_sessions,
-        status_filter=status_filter,
-        next_session=next_session,
-        upcoming_count=len(upcoming_sessions),
-        completed_count=len([s for s in all_sessions if s.status == "completed"]),
-        cancelled_count=len([s for s in all_sessions if s.status == "cancelled"]),
-        total_count=len(all_sessions),
-        selected_session=selected_session,
-        calendar_weeks=weeks,
-        month_label=today.strftime("%B %Y"),
-        current_user=session.get("current_user"),
-        current_role=session.get("current_role"),
-    )
-
-
-@app.route("/student/achievements")
-def student_achievements_page():
-    if session.get("current_role") != "student" or not session.get("current_user"):
-        return redirect(url_for("login_page"))
-
-    student = Student.query.get(session["current_user"]["id"])
-    if student is None:
-        session.clear()
-        return redirect(url_for("login_page"))
-
-    my_mentorships = Mentorship.query.filter_by(student_id=student.id).all()
-    mentorship_ids = [m.id for m in my_mentorships]
-    all_sessions = (
-        Session.query.filter(Session.mentorship_id.in_(mentorship_ids)).all() if mentorship_ids else []
-    )
-    completed_sessions = [s for s in all_sessions if s.status == "completed"]
-    total_hours = round(sum(s.duration_minutes for s in completed_sessions) / 60, 1)
-    all_resources = (
-        Resource.query.filter(Resource.mentorship_id.in_(mentorship_ids)).all() if mentorship_ids else []
-    )
-
-    badges = compute_student_badges(len(my_mentorships), len(completed_sessions), total_hours, len(all_resources))
-
-    return render_template(
-        "StudentAchievements.html",
-        student=student,
-        badges=badges,
-        unlocked_count=len([b for b in badges if b["unlocked"]]),
-        completed_sessions_count=len(completed_sessions),
-        total_hours=total_hours,
-        resources_count=len(all_resources),
-        mentors_connected=len(my_mentorships),
-        current_user=session.get("current_user"),
-        current_role=session.get("current_role"),
-    )
-
-
-@app.route("/student/resources")
-def student_resources_page():
-    if session.get("current_role") != "student" or not session.get("current_user"):
-        return redirect(url_for("login_page"))
-
-    student = Student.query.get(session["current_user"]["id"])
-    if student is None:
-        session.clear()
-        return redirect(url_for("login_page"))
-
-    my_mentorships = Mentorship.query.filter_by(student_id=student.id).all()
-    mentorship_ids = [m.id for m in my_mentorships]
+    # Resources tab — pulled from the Resource table, filtered server-side.
     all_resources = (
         Resource.query.filter(Resource.mentorship_id.in_(mentorship_ids))
         .order_by(Resource.uploaded_at.desc())
@@ -513,25 +504,77 @@ def student_resources_page():
         if mentorship_ids
         else []
     )
-
-    query = request.args.get("q", "").strip().lower()
+    query = request.args.get("q", "").strip()
     type_filter = request.args.get("type", "all")
-    filtered = all_resources
+    filtered_resources = all_resources
     if query:
-        filtered = [r for r in filtered if query in r.title.lower()]
+        filtered_resources = [r for r in filtered_resources if query.lower() in r.title.lower()]
     if type_filter in {"pdf", "video", "code", "link"}:
-        filtered = [r for r in filtered if r.resource_type == type_filter]
+        filtered_resources = [r for r in filtered_resources if r.resource_type == type_filter]
+
+    notifications = (
+        Notification.query.filter_by(recipient_role="student", recipient_id=student.id)
+        .order_by(Notification.created_at.desc())
+        .limit(8)
+        .all()
+    )
+    unread_count = Notification.query.filter_by(
+        recipient_role="student", recipient_id=student.id, is_read=False
+    ).count()
+
+    avg_progress = round(sum(m.progress for m in my_mentorships) / len(my_mentorships)) if my_mentorships else 0
 
     return render_template(
-        "StudentResources.html",
+        "Student.html",
         student=student,
-        resources=filtered,
-        query=request.args.get("q", ""),
+        my_mentorships=my_mentorships,
+        available_mentors=available_mentors,
+        active_tab=request.args.get("tab", "overview"),
+        # sessions
+        sessions=filtered_sessions,
+        all_sessions=all_sessions,
+        status_filter=status_filter,
+        selected_session=selected_session,
+        next_session=next_session,
+        action_sessions=action_sessions,
+        action_count=len(action_sessions),
+        total_count=len(all_sessions),
+        confirmed_count=len(confirmed_sessions),
+        awaiting_count=len(awaiting_sessions),
+        completed_count=len(completed_sessions),
+        cancelled_count=len(cancelled_sessions),
+        total_hours=total_hours,
+        calendar_weeks=calendar_weeks,
+        month_label=month_label,
+        # resources
+        resources=filtered_resources,
+        recent_resources=all_resources[:3],
+        resources_total=len(all_resources),
+        query=query,
         type_filter=type_filter,
-        total_count=len(all_resources),
+        # shared
+        avg_progress=avg_progress,
+        notifications=notifications,
+        unread_count=unread_count,
         current_user=session.get("current_user"),
         current_role=session.get("current_role"),
     )
+
+
+@app.route("/student/sessions")
+def student_sessions_page():
+    """Kept so old links and bookmarks still work — the sessions view now
+    lives as a tab on the main dashboard."""
+    args = request.args.to_dict()
+    args["tab"] = "sessions"
+    return redirect(url_for("student_page", **args))
+
+
+@app.route("/student/resources")
+def student_resources_page():
+    args = request.args.to_dict()
+    args["tab"] = "resources"
+    return redirect(url_for("student_page", **args))
 
 
 @app.route("/student/connect/<int:mentor_id>", methods=["POST"])
@@ -554,43 +597,213 @@ def student_connect_mentor(mentor_id):
     return redirect(url_for("student_page"))
 
 
+# ---------------------------------------------------------------------------
+# Session booking and the confirm / reschedule handshake
+# ---------------------------------------------------------------------------
+
 @app.route("/session/book/<int:mentorship_id>", methods=["POST"])
 def book_session(mentorship_id):
+    """A student booking asks the mentor to confirm. A mentor scheduling
+    directly is already confirmed on their side, so it goes straight through."""
     if session.get("current_role") not in {"student", "mentor"} or not session.get("current_user"):
         return redirect(url_for("login_page"))
 
     mentorship = get_owned_mentorship(mentorship_id)
     if mentorship is not None:
-        date_str = request.form.get("date", "").strip()
-        time_str = request.form.get("time", "").strip()
         duration = request.form.get("duration", "60").strip()
         mode = request.form.get("mode", "Google Meet").strip() or "Google Meet"
         topic = request.form.get("topic", "").strip()
-
-        try:
-            scheduled_at = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
-        except ValueError:
-            scheduled_at = None
+        scheduled_at = parse_datetime(request.form.get("date", ""), request.form.get("time", ""))
 
         if scheduled_at is not None and topic and duration.isdigit():
-            db.session.add(Session(
+            booked_by_student = session["current_role"] == "student"
+            new_session = Session(
                 mentorship_id=mentorship.id,
                 scheduled_at=scheduled_at,
                 duration_minutes=int(duration),
                 mode=mode,
                 topic=topic,
-                status="upcoming",
-            ))
+                status=STATUS_PENDING_MENTOR if booked_by_student else STATUS_CONFIRMED,
+            )
+            db.session.add(new_session)
+            db.session.flush()  # need new_session.id for the notification link
 
             actor_name = session["current_user"]["full_name"]
-            if session["current_role"] == "student":
-                add_notification("mentor", mentorship.mentor_id, f"{actor_name} booked a session: {topic}.")
+            when = scheduled_at.strftime("%a %d %b, %I:%M %p")
+            if booked_by_student:
+                add_notification(
+                    "mentor", mentorship.mentor_id,
+                    f"{actor_name} requested a session: {topic} — {when}. Confirm or propose another time.",
+                    new_session.id,
+                )
             else:
-                add_notification("student", mentorship.student_id, f"{actor_name} scheduled a session with you: {topic}.")
+                add_notification(
+                    "student", mentorship.student_id,
+                    f"{actor_name} scheduled a session with you: {topic} — {when}.",
+                    new_session.id,
+                )
 
             db.session.commit()
 
-    return redirect(url_for("student_sessions_page") if session["current_role"] == "student" else url_for("mentor_page"))
+    return back_to_dashboard()
+
+
+@app.route("/session/<int:session_id>/confirm", methods=["POST"])
+def confirm_session(session_id):
+    """Mentor accepts the student's requested slot as-is."""
+    if session.get("current_role") != "mentor" or not session.get("current_user"):
+        return redirect(url_for("login_page"))
+
+    session_row, mentorship = get_owned_session(session_id)
+    if session_row is not None and session_row.status == STATUS_PENDING_MENTOR:
+        session_row.status = STATUS_CONFIRMED
+        session_row.proposed_at = None
+        session_row.proposed_by = None
+        add_notification(
+            "student", mentorship.student_id,
+            f"{session['current_user']['full_name']} confirmed your session: {session_row.topic}.",
+            session_row.id,
+        )
+        db.session.commit()
+
+    return back_to_dashboard()
+
+
+@app.route("/session/<int:session_id>/decline", methods=["POST"])
+def decline_session(session_id):
+    """Mentor turns the request down. The student can book a fresh slot."""
+    if session.get("current_role") != "mentor" or not session.get("current_user"):
+        return redirect(url_for("login_page"))
+
+    session_row, mentorship = get_owned_session(session_id)
+    if session_row is not None and session_row.status in {STATUS_PENDING_MENTOR, STATUS_RESCHEDULE_BY_STUDENT}:
+        session_row.status = STATUS_DECLINED
+        session_row.proposed_at = None
+        session_row.proposed_by = None
+        reason = request.form.get("reason", "").strip()
+        tail = f" Reason: {reason}" if reason else " You can pick another slot."
+        add_notification(
+            "student", mentorship.student_id,
+            f"{session['current_user']['full_name']} could not take '{session_row.topic}'.{tail}",
+            session_row.id,
+        )
+        db.session.commit()
+
+    return back_to_dashboard()
+
+
+@app.route("/session/<int:session_id>/propose", methods=["POST"])
+def propose_reschedule(session_id):
+    """Either side offers a different time. The existing scheduled_at is left
+    alone until the other side accepts, so nothing is lost if they decline."""
+    if session.get("current_role") not in {"student", "mentor"} or not session.get("current_user"):
+        return redirect(url_for("login_page"))
+
+    session_row, mentorship = get_owned_session(session_id)
+    if session_row is None or not session_row.is_live:
+        return back_to_dashboard()
+
+    new_time = parse_datetime(request.form.get("date", ""), request.form.get("time", ""))
+    if new_time is not None:
+        role = session["current_role"]
+        actor_name = session["current_user"]["full_name"]
+        when = new_time.strftime("%a %d %b, %I:%M %p")
+
+        session_row.proposed_at = new_time
+        session_row.proposed_by = role
+
+        if role == "mentor":
+            session_row.status = STATUS_RESCHEDULE_BY_MENTOR
+            add_notification(
+                "student", mentorship.student_id,
+                f"{actor_name} proposed a new time for '{session_row.topic}': {when}. Accept or keep the original.",
+                session_row.id,
+            )
+        else:
+            session_row.status = STATUS_RESCHEDULE_BY_STUDENT
+            add_notification(
+                "mentor", mentorship.mentor_id,
+                f"{actor_name} proposed a new time for '{session_row.topic}': {when}. Accept or decline.",
+                session_row.id,
+            )
+        db.session.commit()
+
+    return back_to_dashboard()
+
+
+@app.route("/session/<int:session_id>/accept-proposal", methods=["POST"])
+def accept_reschedule(session_id):
+    """The side that did NOT propose accepts — the new time becomes real and
+    the session is confirmed."""
+    if session.get("current_role") not in {"student", "mentor"} or not session.get("current_user"):
+        return redirect(url_for("login_page"))
+
+    session_row, mentorship = get_owned_session(session_id)
+    role = session["current_role"]
+
+    # Only the other party may accept; you can't rubber-stamp your own proposal.
+    expected = {
+        "student": STATUS_RESCHEDULE_BY_MENTOR,
+        "mentor": STATUS_RESCHEDULE_BY_STUDENT,
+    }[role]
+
+    if session_row is not None and session_row.status == expected and session_row.proposed_at is not None:
+        session_row.scheduled_at = session_row.proposed_at
+        session_row.proposed_at = None
+        session_row.proposed_by = None
+        session_row.status = STATUS_CONFIRMED
+
+        actor_name = session["current_user"]["full_name"]
+        when = session_row.scheduled_at.strftime("%a %d %b, %I:%M %p")
+        if role == "student":
+            add_notification(
+                "mentor", mentorship.mentor_id,
+                f"{actor_name} accepted your new time for '{session_row.topic}': {when}.",
+                session_row.id,
+            )
+        else:
+            add_notification(
+                "student", mentorship.student_id,
+                f"{actor_name} accepted your new time for '{session_row.topic}': {when}.",
+                session_row.id,
+            )
+        db.session.commit()
+
+    return back_to_dashboard()
+
+
+@app.route("/session/<int:session_id>/reject-proposal", methods=["POST"])
+def reject_reschedule(session_id):
+    """Declining a proposed time drops the offer and hands the session back to
+    the mentor to confirm the original slot or suggest something else. Nothing
+    is cancelled — the original scheduled_at was never overwritten."""
+    if session.get("current_role") not in {"student", "mentor"} or not session.get("current_user"):
+        return redirect(url_for("login_page"))
+
+    session_row, mentorship = get_owned_session(session_id)
+    role = session["current_role"]
+    expected = {
+        "student": STATUS_RESCHEDULE_BY_MENTOR,
+        "mentor": STATUS_RESCHEDULE_BY_STUDENT,
+    }[role]
+
+    if session_row is not None and session_row.status == expected:
+        session_row.proposed_at = None
+        session_row.proposed_by = None
+        session_row.status = STATUS_PENDING_MENTOR
+
+        actor_name = session["current_user"]["full_name"]
+        original = session_row.scheduled_at.strftime("%a %d %b, %I:%M %p")
+        target_role = "mentor" if role == "student" else "student"
+        target_id = mentorship.mentor_id if role == "student" else mentorship.student_id
+        add_notification(
+            target_role, target_id,
+            f"{actor_name} declined the new time for '{session_row.topic}' and kept {original}.",
+            session_row.id,
+        )
+        db.session.commit()
+
+    return back_to_dashboard()
 
 
 @app.route("/session/<int:session_id>/cancel", methods=["POST"])
@@ -599,42 +812,21 @@ def cancel_session(session_id):
         return redirect(url_for("login_page"))
 
     session_row, mentorship = get_owned_session(session_id)
-    if session_row is not None and session_row.status == "upcoming":
-        session_row.status = "cancelled"
+    if session_row is not None and session_row.is_live:
+        session_row.status = STATUS_CANCELLED
+        session_row.proposed_at = None
+        session_row.proposed_by = None
+
         actor_name = session["current_user"]["full_name"]
         if session["current_role"] == "student":
-            add_notification("mentor", mentorship.mentor_id, f"{actor_name} cancelled the session: {session_row.topic}.")
+            add_notification("mentor", mentorship.mentor_id,
+                             f"{actor_name} cancelled the session: {session_row.topic}.", session_row.id)
         else:
-            add_notification("student", mentorship.student_id, f"{actor_name} cancelled the session: {session_row.topic}.")
+            add_notification("student", mentorship.student_id,
+                             f"{actor_name} cancelled the session: {session_row.topic}.", session_row.id)
         db.session.commit()
 
-    return redirect(url_for("student_sessions_page") if session["current_role"] == "student" else url_for("mentor_page"))
-
-
-@app.route("/session/<int:session_id>/reschedule", methods=["POST"])
-def reschedule_session(session_id):
-    if session.get("current_role") not in {"student", "mentor"} or not session.get("current_user"):
-        return redirect(url_for("login_page"))
-
-    session_row, mentorship = get_owned_session(session_id)
-    if session_row is not None and session_row.status == "upcoming":
-        date_str = request.form.get("date", "").strip()
-        time_str = request.form.get("time", "").strip()
-        try:
-            new_time = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
-        except ValueError:
-            new_time = None
-
-        if new_time is not None:
-            session_row.scheduled_at = new_time
-            actor_name = session["current_user"]["full_name"]
-            if session["current_role"] == "student":
-                add_notification("mentor", mentorship.mentor_id, f"{actor_name} rescheduled the session: {session_row.topic}.")
-            else:
-                add_notification("student", mentorship.student_id, f"{actor_name} rescheduled the session: {session_row.topic}.")
-            db.session.commit()
-
-    return redirect(url_for("student_sessions_page") if session["current_role"] == "student" else url_for("mentor_page"))
+    return back_to_dashboard()
 
 
 @app.route("/session/<int:session_id>/complete", methods=["POST"])
@@ -643,13 +835,16 @@ def complete_session(session_id):
         return redirect(url_for("login_page"))
 
     session_row, mentorship = get_owned_session(session_id)
-    if session_row is not None:
-        session_row.status = "completed"
+    if session_row is not None and session_row.status == STATUS_CONFIRMED:
+        session_row.status = STATUS_COMPLETED
         notes = request.form.get("notes", "").strip()
         if notes:
             session_row.notes = notes
-        mentor_name = session["current_user"]["full_name"]
-        add_notification("student", mentorship.student_id, f"{mentor_name} marked '{session_row.topic}' as completed.")
+        add_notification(
+            "student", mentorship.student_id,
+            f"{session['current_user']['full_name']} marked '{session_row.topic}' as completed.",
+            session_row.id,
+        )
         db.session.commit()
 
     return redirect(url_for("mentor_page"))
@@ -690,7 +885,9 @@ def mark_notifications_read():
         Notification.query.filter_by(recipient_role=role, recipient_id=uid, is_read=False).update({"is_read": True})
         db.session.commit()
 
-    return redirect(url_for("student_page") if role == "student" else url_for("mentor_page"))
+    if role == "student":
+        return redirect(url_for("student_page", tab=request.form.get("return_tab", "overview")))
+    return redirect(url_for("mentor_page"))
 
 
 @app.route("/mentor")
@@ -709,18 +906,23 @@ def mentor_page():
     my_mentorships = Mentorship.query.filter_by(mentor_id=mentor.id).all()
     mentorship_ids = [m.id for m in my_mentorships]
 
-    upcoming_sessions = (
-        Session.query.filter(Session.mentorship_id.in_(mentorship_ids), Session.status == "upcoming")
+    all_sessions = (
+        Session.query.filter(Session.mentorship_id.in_(mentorship_ids))
         .order_by(Session.scheduled_at)
         .all()
         if mentorship_ids
         else []
     )
 
+    # Requests sitting on the mentor's desk: new bookings to confirm, plus
+    # reschedules the student has proposed.
+    pending_requests = [s for s in all_sessions if s.needs_action_from("mentor")]
+    upcoming_sessions = [s for s in all_sessions if s.status == STATUS_CONFIRMED]
+
     notifications = (
         Notification.query.filter_by(recipient_role="mentor", recipient_id=mentor.id)
         .order_by(Notification.created_at.desc())
-        .limit(5)
+        .limit(8)
         .all()
     )
     unread_count = Notification.query.filter_by(
@@ -733,6 +935,9 @@ def mentor_page():
         expertise_tags=expertise_tags,
         my_mentorships=my_mentorships,
         upcoming_sessions=upcoming_sessions,
+        pending_requests=pending_requests,
+        pending_count=len(pending_requests),
+        all_sessions=all_sessions,
         notifications=notifications,
         unread_count=unread_count,
         current_user=session.get("current_user"),
@@ -859,4 +1064,4 @@ def admin_dashboard_page():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=8000)
+    app.run(debug=True)

@@ -39,9 +39,12 @@
 
             <!-- Actions -->
             <div class="flex items-center space-x-4">
+                {% if pending_count and pending_count > 0 %}
+                <a href="#requests" class="text-xs font-bold bg-accent text-darkNavy px-3 py-1.5 rounded-full">📋 {{ pending_count }} Request{{ 's' if pending_count != 1 else '' }}</a>
+                {% endif %}
                 {% if unread_count and unread_count > 0 %}
                 <form action="/notifications/mark-read" method="post">
-                    <button type="submit" class="text-xs font-bold bg-accent text-darkNavy px-3 py-1.5 rounded-full">🔔 {{ unread_count }} New</button>
+                    <button type="submit" class="text-xs font-bold bg-white border border-slate-200 text-primary px-3 py-1.5 rounded-full">🔔 {{ unread_count }} New</button>
                 </form>
                 {% endif %}
                 <span class="hidden sm:inline-flex items-center bg-blue-50 text-primary text-xs font-bold px-3 py-1.5 rounded-full">Mentor account</span>
@@ -71,7 +74,7 @@
     </section>
 
     <!-- Profile Card Section -->
-    <section class="pb-24 max-w-7xl mx-auto px-6">
+    <section class="pb-16 max-w-7xl mx-auto px-6">
         <div class="grid lg:grid-cols-3 gap-8">
 
             <!-- Profile Card (styled like the landing page's mentor cards, but from real data) -->
@@ -128,6 +131,72 @@
         </div>
     </section>
 
+    <!-- Session Requests — new bookings to confirm, and reschedules students have proposed -->
+    <section id="requests" class="pb-8 max-w-7xl mx-auto px-6">
+        <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-8">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold text-primary">Session requests</h2>
+                {% if pending_count and pending_count > 0 %}<span class="text-xs font-bold bg-accent text-darkNavy px-3 py-1 rounded-full">{{ pending_count }} waiting on you</span>{% endif %}
+            </div>
+
+            {% if pending_requests %}
+            <div class="space-y-3">
+                {% for s in pending_requests %}
+                <div class="p-4 bg-lightBg rounded-2xl border border-slate-200">
+                    <div class="flex items-start justify-between gap-3 mb-2">
+                        <div>
+                            <h4 class="font-semibold text-primary text-sm">{{ s.topic }}</h4>
+                            <p class="text-xs text-slate-500">{{ s.mentorship.student.full_name }}</p>
+                        </div>
+                        <span class="text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap
+                            {{ 'bg-amber-100 text-amber-700' if s.status == 'pending_mentor' else 'bg-blue-100 text-blue-700' }}">
+                            {{ s.status_label }}
+                        </span>
+                    </div>
+
+                    {% if s.status == 'reschedule_by_student' %}
+                    <p class="text-xs text-slate-600 mb-1">Original: {{ s.scheduled_at.strftime('%a %d %b, %I:%M %p') }} &bull; Proposed: <strong>{{ s.proposed_at.strftime('%a %d %b, %I:%M %p') }}</strong></p>
+                    {% else %}
+                    <p class="text-xs text-slate-600 mb-1">📅 {{ s.scheduled_at.strftime('%a %d %b, %I:%M %p') }} &bull; 📹 {{ s.mode }} &bull; {{ s.duration_minutes }} min</p>
+                    {% endif %}
+
+                    <div class="flex flex-wrap gap-2 mt-3">
+                        {% if s.status == 'pending_mentor' %}
+                        <form action="/session/{{ s.id }}/confirm" method="post">
+                            <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg">Confirm</button>
+                        </form>
+                        {% elif s.status == 'reschedule_by_student' %}
+                        <form action="/session/{{ s.id }}/accept-proposal" method="post">
+                            <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg">Accept new time</button>
+                        </form>
+                        {% endif %}
+
+                        <details class="inline-block">
+                            <summary class="list-none cursor-pointer text-xs font-bold bg-white border border-slate-300 hover:border-slate-400 text-primary px-3 py-1.5 rounded-lg">Propose different time</summary>
+                            <form action="/session/{{ s.id }}/propose" method="post" class="mt-2 flex flex-wrap gap-2 bg-white p-3 rounded-xl border border-slate-200">
+                                <input type="date" name="date" required class="text-xs border border-slate-300 rounded-lg px-2 py-1.5">
+                                <input type="time" name="time" required class="text-xs border border-slate-300 rounded-lg px-2 py-1.5">
+                                <button type="submit" class="text-xs font-bold bg-primary hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg">Send</button>
+                            </form>
+                        </details>
+
+                        <details class="inline-block">
+                            <summary class="list-none cursor-pointer text-xs font-bold text-red-600 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg">Decline</summary>
+                            <form action="/session/{{ s.id }}/decline" method="post" class="mt-2 flex gap-2 bg-white p-3 rounded-xl border border-slate-200">
+                                <input type="text" name="reason" placeholder="Reason (optional)" class="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
+                                <button type="submit" class="text-xs font-bold bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg">Confirm decline</button>
+                            </form>
+                        </details>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-sm text-slate-500">Nothing waiting on you right now.</p>
+            {% endif %}
+        </div>
+    </section>
+
     <!-- Notifications & Upcoming Sessions -->
     <section class="pb-8 max-w-7xl mx-auto px-6">
         <div class="grid lg:grid-cols-2 gap-8">
@@ -158,10 +227,15 @@
                     <li class="p-3 bg-lightBg rounded-2xl border border-slate-200">
                         <p class="text-sm font-semibold text-primary">{{ s.topic }}</p>
                         <p class="text-xs text-slate-500">with {{ s.mentorship.student.full_name }} &bull; {{ s.scheduled_at.strftime('%a %d %b, %I:%M %p') }} &bull; {{ s.mode }}</p>
-                        <form action="/session/{{ s.id }}/complete" method="post" class="flex items-center gap-2 mt-2">
-                            <input type="text" name="notes" placeholder="What did you cover? (one item per line)" class="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
-                            <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg whitespace-nowrap">Mark complete</button>
-                        </form>
+                        <div class="flex items-center gap-2 mt-2">
+                            <form action="/session/{{ s.id }}/complete" method="post" class="flex items-center gap-2 flex-1">
+                                <input type="text" name="notes" placeholder="What did you cover? (one item per line)" class="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
+                                <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg whitespace-nowrap">Mark complete</button>
+                            </form>
+                            <form action="/session/{{ s.id }}/cancel" method="post">
+                                <button type="submit" class="text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg">Cancel</button>
+                            </form>
+                        </div>
                     </li>
                     {% endfor %}
                 </ul>
@@ -230,6 +304,7 @@
                                         <option>In-person</option>
                                     </select>
                                 </div>
+                                <p class="text-[10px] text-slate-400">Scheduled directly by you — this is confirmed immediately, no need for the student to accept.</p>
                                 <button type="submit" class="w-full text-xs font-bold bg-primary hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg">Book</button>
                             </form>
                         </details>
