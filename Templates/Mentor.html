@@ -57,6 +57,20 @@
         </div>
     </header>
 
+    {% with flashed = get_flashed_messages(with_categories=true) %}
+    {% if flashed %}
+    <div class="max-w-7xl mx-auto px-6 pt-6 space-y-2">
+        {% for category, message in flashed %}
+        <div class="flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold
+            {{ 'bg-red-50 text-red-700 border border-red-200' if category == 'error' else 'bg-emerald-50 text-emerald-700 border border-emerald-200' }}">
+            <span>{{ '⚠️' if category == 'error' else '✅' }}</span>
+            <span>{{ message }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
     <!-- Welcome / Hero -->
     <section class="relative pt-16 pb-12 lg:pt-20 lg:pb-16 overflow-hidden">
         <div class="max-w-5xl mx-auto px-6 text-center">

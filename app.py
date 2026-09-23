@@ -2,7 +2,7 @@ from datetime import date, datetime
 from calendar import Calendar
 from pathlib import Path
 
-from flask import Flask, redirect, render_template, request, session, url_for
+from flask import Flask, flash, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -586,14 +586,20 @@ def student_connect_mentor(mentor_id):
     student_name = session["current_user"]["full_name"]
     mentor = Mentor.query.get(mentor_id)
 
-    if mentor is not None:
-        existing = Mentorship.query.filter_by(student_id=student_id, mentor_id=mentor_id).first()
-        if existing is None:
-            mentorship = Mentorship(student_id=student_id, mentor_id=mentor_id, progress=0, status="active")
-            db.session.add(mentorship)
-            add_notification("mentor", mentor_id, f"{student_name} connected with you as a mentee.")
-            db.session.commit()
+    if mentor is None:
+        flash("That mentor no longer exists.", "error")
+        return redirect(url_for("student_page"))
 
+    existing = Mentorship.query.filter_by(student_id=student_id, mentor_id=mentor_id).first()
+    if existing is not None:
+        flash(f"You're already connected with {mentor.full_name}.", "error")
+        return redirect(url_for("student_page"))
+
+    mentorship = Mentorship(student_id=student_id, mentor_id=mentor_id, progress=0, status="active")
+    db.session.add(mentorship)
+    add_notification("mentor", mentor_id, f"{student_name} connected with you as a mentee.")
+    db.session.commit()
+    flash(f"Connected with {mentor.full_name}.", "success")
     return redirect(url_for("student_page"))
 
 
@@ -609,42 +615,62 @@ def book_session(mentorship_id):
         return redirect(url_for("login_page"))
 
     mentorship = get_owned_mentorship(mentorship_id)
-    if mentorship is not None:
-        duration = request.form.get("duration", "60").strip()
-        mode = request.form.get("mode", "Google Meet").strip() or "Google Meet"
-        topic = request.form.get("topic", "").strip()
-        scheduled_at = parse_datetime(request.form.get("date", ""), request.form.get("time", ""))
+    if mentorship is None:
+        # Most common cause: the session cookie's role/id doesn't actually
+        # own this mentorship — e.g. you're logged in as the mentor in this
+        # tab but the form still shows the student view from another tab.
+        flash("Couldn't book that session — you don't have access to that mentorship. "
+              "Check you're logged in as the right account in this tab.", "error")
+        return back_to_dashboard()
 
-        if scheduled_at is not None and topic and duration.isdigit():
-            booked_by_student = session["current_role"] == "student"
-            new_session = Session(
-                mentorship_id=mentorship.id,
-                scheduled_at=scheduled_at,
-                duration_minutes=int(duration),
-                mode=mode,
-                topic=topic,
-                status=STATUS_PENDING_MENTOR if booked_by_student else STATUS_CONFIRMED,
-            )
-            db.session.add(new_session)
-            db.session.flush()  # need new_session.id for the notification link
+    duration = request.form.get("duration", "60").strip()
+    mode = request.form.get("mode", "Google Meet").strip() or "Google Meet"
+    topic = request.form.get("topic", "").strip()
+    scheduled_at = parse_datetime(request.form.get("date", ""), request.form.get("time", ""))
 
-            actor_name = session["current_user"]["full_name"]
-            when = scheduled_at.strftime("%a %d %b, %I:%M %p")
-            if booked_by_student:
-                add_notification(
-                    "mentor", mentorship.mentor_id,
-                    f"{actor_name} requested a session: {topic} — {when}. Confirm or propose another time.",
-                    new_session.id,
-                )
-            else:
-                add_notification(
-                    "student", mentorship.student_id,
-                    f"{actor_name} scheduled a session with you: {topic} — {when}.",
-                    new_session.id,
-                )
+    if scheduled_at is None or not topic or not duration.isdigit():
+        flash("Couldn't book that session — please fill in a topic, a valid date and time, "
+              "and a duration.", "error")
+        return back_to_dashboard()
 
-            db.session.commit()
+    booked_by_student = session["current_role"] == "student"
+    new_session = Session(
+        mentorship_id=mentorship.id,
+        scheduled_at=scheduled_at,
+        duration_minutes=int(duration),
+        mode=mode,
+        topic=topic,
+        status=STATUS_PENDING_MENTOR if booked_by_student else STATUS_CONFIRMED,
+    )
+    db.session.add(new_session)
+    db.session.flush()  # need new_session.id for the notification link
 
+    actor_name = session["current_user"]["full_name"]
+    when = scheduled_at.strftime("%a %d %b, %I:%M %p")
+    if booked_by_student:
+        add_notification(
+            "mentor", mentorship.mentor_id,
+            f"{actor_name} requested a session: {topic} — {when}. Confirm or propose another time.",
+            new_session.id,
+        )
+        # Self-notification so the student who just booked also sees
+        # confirmation on their own screen, not just the mentor's inbox.
+        add_notification(
+            "student", mentorship.student_id,
+            f"Request sent to {mentorship.mentor.full_name} for '{topic}' — {when}. Waiting for confirmation.",
+            new_session.id,
+        )
+        flash(f"Booking request sent to {mentorship.mentor.full_name}. "
+              f"You'll be notified once they confirm.", "success")
+    else:
+        add_notification(
+            "student", mentorship.student_id,
+            f"{actor_name} scheduled a session with you: {topic} — {when}.",
+            new_session.id,
+        )
+        flash(f"Session with {mentorship.student.full_name} confirmed for {when}.", "success")
+
+    db.session.commit()
     return back_to_dashboard()
 
 
@@ -655,17 +681,23 @@ def confirm_session(session_id):
         return redirect(url_for("login_page"))
 
     session_row, mentorship = get_owned_session(session_id)
-    if session_row is not None and session_row.status == STATUS_PENDING_MENTOR:
-        session_row.status = STATUS_CONFIRMED
-        session_row.proposed_at = None
-        session_row.proposed_by = None
-        add_notification(
-            "student", mentorship.student_id,
-            f"{session['current_user']['full_name']} confirmed your session: {session_row.topic}.",
-            session_row.id,
-        )
-        db.session.commit()
+    if session_row is None:
+        flash("Couldn't find that session, or it's not yours to confirm.", "error")
+        return back_to_dashboard()
+    if session_row.status != STATUS_PENDING_MENTOR:
+        flash(f"That session is already '{session_row.status_label}' — nothing to confirm.", "error")
+        return back_to_dashboard()
 
+    session_row.status = STATUS_CONFIRMED
+    session_row.proposed_at = None
+    session_row.proposed_by = None
+    add_notification(
+        "student", mentorship.student_id,
+        f"{session['current_user']['full_name']} confirmed your session: {session_row.topic}.",
+        session_row.id,
+    )
+    db.session.commit()
+    flash(f"Confirmed '{session_row.topic}' with {mentorship.student.full_name}.", "success")
     return back_to_dashboard()
 
 
@@ -676,19 +708,25 @@ def decline_session(session_id):
         return redirect(url_for("login_page"))
 
     session_row, mentorship = get_owned_session(session_id)
-    if session_row is not None and session_row.status in {STATUS_PENDING_MENTOR, STATUS_RESCHEDULE_BY_STUDENT}:
-        session_row.status = STATUS_DECLINED
-        session_row.proposed_at = None
-        session_row.proposed_by = None
-        reason = request.form.get("reason", "").strip()
-        tail = f" Reason: {reason}" if reason else " You can pick another slot."
-        add_notification(
-            "student", mentorship.student_id,
-            f"{session['current_user']['full_name']} could not take '{session_row.topic}'.{tail}",
-            session_row.id,
-        )
-        db.session.commit()
+    if session_row is None:
+        flash("Couldn't find that session, or it's not yours to decline.", "error")
+        return back_to_dashboard()
+    if session_row.status not in {STATUS_PENDING_MENTOR, STATUS_RESCHEDULE_BY_STUDENT}:
+        flash(f"That session is already '{session_row.status_label}' — nothing to decline.", "error")
+        return back_to_dashboard()
 
+    session_row.status = STATUS_DECLINED
+    session_row.proposed_at = None
+    session_row.proposed_by = None
+    reason = request.form.get("reason", "").strip()
+    tail = f" Reason: {reason}" if reason else " You can pick another slot."
+    add_notification(
+        "student", mentorship.student_id,
+        f"{session['current_user']['full_name']} could not take '{session_row.topic}'.{tail}",
+        session_row.id,
+    )
+    db.session.commit()
+    flash(f"Declined '{session_row.topic}'.", "success")
     return back_to_dashboard()
 
 
@@ -700,34 +738,41 @@ def propose_reschedule(session_id):
         return redirect(url_for("login_page"))
 
     session_row, mentorship = get_owned_session(session_id)
-    if session_row is None or not session_row.is_live:
+    if session_row is None:
+        flash("Couldn't find that session, or it's not yours to reschedule.", "error")
+        return back_to_dashboard()
+    if not session_row.is_live:
+        flash(f"That session is '{session_row.status_label}' — it can't be rescheduled.", "error")
         return back_to_dashboard()
 
     new_time = parse_datetime(request.form.get("date", ""), request.form.get("time", ""))
-    if new_time is not None:
-        role = session["current_role"]
-        actor_name = session["current_user"]["full_name"]
-        when = new_time.strftime("%a %d %b, %I:%M %p")
+    if new_time is None:
+        flash("Couldn't propose a new time — please enter a valid date and time.", "error")
+        return back_to_dashboard()
 
-        session_row.proposed_at = new_time
-        session_row.proposed_by = role
+    role = session["current_role"]
+    actor_name = session["current_user"]["full_name"]
+    when = new_time.strftime("%a %d %b, %I:%M %p")
 
-        if role == "mentor":
-            session_row.status = STATUS_RESCHEDULE_BY_MENTOR
-            add_notification(
-                "student", mentorship.student_id,
-                f"{actor_name} proposed a new time for '{session_row.topic}': {when}. Accept or keep the original.",
-                session_row.id,
-            )
-        else:
-            session_row.status = STATUS_RESCHEDULE_BY_STUDENT
-            add_notification(
-                "mentor", mentorship.mentor_id,
-                f"{actor_name} proposed a new time for '{session_row.topic}': {when}. Accept or decline.",
-                session_row.id,
-            )
-        db.session.commit()
+    session_row.proposed_at = new_time
+    session_row.proposed_by = role
 
+    if role == "mentor":
+        session_row.status = STATUS_RESCHEDULE_BY_MENTOR
+        add_notification(
+            "student", mentorship.student_id,
+            f"{actor_name} proposed a new time for '{session_row.topic}': {when}. Accept or keep the original.",
+            session_row.id,
+        )
+    else:
+        session_row.status = STATUS_RESCHEDULE_BY_STUDENT
+        add_notification(
+            "mentor", mentorship.mentor_id,
+            f"{actor_name} proposed a new time for '{session_row.topic}': {when}. Accept or decline.",
+            session_row.id,
+        )
+    db.session.commit()
+    flash(f"Proposed {when} for '{session_row.topic}'. Waiting for a response.", "success")
     return back_to_dashboard()
 
 
@@ -747,28 +792,35 @@ def accept_reschedule(session_id):
         "mentor": STATUS_RESCHEDULE_BY_STUDENT,
     }[role]
 
-    if session_row is not None and session_row.status == expected and session_row.proposed_at is not None:
-        session_row.scheduled_at = session_row.proposed_at
-        session_row.proposed_at = None
-        session_row.proposed_by = None
-        session_row.status = STATUS_CONFIRMED
+    if session_row is None:
+        flash("Couldn't find that session, or it's not yours.", "error")
+        return back_to_dashboard()
+    if session_row.status != expected or session_row.proposed_at is None:
+        flash("There's no pending proposal on that session for you to accept "
+              "(it may have already been resolved).", "error")
+        return back_to_dashboard()
 
-        actor_name = session["current_user"]["full_name"]
-        when = session_row.scheduled_at.strftime("%a %d %b, %I:%M %p")
-        if role == "student":
-            add_notification(
-                "mentor", mentorship.mentor_id,
-                f"{actor_name} accepted your new time for '{session_row.topic}': {when}.",
-                session_row.id,
-            )
-        else:
-            add_notification(
-                "student", mentorship.student_id,
-                f"{actor_name} accepted your new time for '{session_row.topic}': {when}.",
-                session_row.id,
-            )
-        db.session.commit()
+    session_row.scheduled_at = session_row.proposed_at
+    session_row.proposed_at = None
+    session_row.proposed_by = None
+    session_row.status = STATUS_CONFIRMED
 
+    actor_name = session["current_user"]["full_name"]
+    when = session_row.scheduled_at.strftime("%a %d %b, %I:%M %p")
+    if role == "student":
+        add_notification(
+            "mentor", mentorship.mentor_id,
+            f"{actor_name} accepted your new time for '{session_row.topic}': {when}.",
+            session_row.id,
+        )
+    else:
+        add_notification(
+            "student", mentorship.student_id,
+            f"{actor_name} accepted your new time for '{session_row.topic}': {when}.",
+            session_row.id,
+        )
+    db.session.commit()
+    flash(f"'{session_row.topic}' confirmed for {when}.", "success")
     return back_to_dashboard()
 
 
@@ -787,22 +839,29 @@ def reject_reschedule(session_id):
         "mentor": STATUS_RESCHEDULE_BY_STUDENT,
     }[role]
 
-    if session_row is not None and session_row.status == expected:
-        session_row.proposed_at = None
-        session_row.proposed_by = None
-        session_row.status = STATUS_PENDING_MENTOR
+    if session_row is None:
+        flash("Couldn't find that session, or it's not yours.", "error")
+        return back_to_dashboard()
+    if session_row.status != expected:
+        flash("There's no pending proposal on that session to decline "
+              "(it may have already been resolved).", "error")
+        return back_to_dashboard()
 
-        actor_name = session["current_user"]["full_name"]
-        original = session_row.scheduled_at.strftime("%a %d %b, %I:%M %p")
-        target_role = "mentor" if role == "student" else "student"
-        target_id = mentorship.mentor_id if role == "student" else mentorship.student_id
-        add_notification(
-            target_role, target_id,
-            f"{actor_name} declined the new time for '{session_row.topic}' and kept {original}.",
-            session_row.id,
-        )
-        db.session.commit()
+    session_row.proposed_at = None
+    session_row.proposed_by = None
+    session_row.status = STATUS_PENDING_MENTOR
 
+    actor_name = session["current_user"]["full_name"]
+    original = session_row.scheduled_at.strftime("%a %d %b, %I:%M %p")
+    target_role = "mentor" if role == "student" else "student"
+    target_id = mentorship.mentor_id if role == "student" else mentorship.student_id
+    add_notification(
+        target_role, target_id,
+        f"{actor_name} declined the new time for '{session_row.topic}' and kept {original}.",
+        session_row.id,
+    )
+    db.session.commit()
+    flash(f"Kept the original time — {original}.", "success")
     return back_to_dashboard()
 
 
@@ -812,20 +871,26 @@ def cancel_session(session_id):
         return redirect(url_for("login_page"))
 
     session_row, mentorship = get_owned_session(session_id)
-    if session_row is not None and session_row.is_live:
-        session_row.status = STATUS_CANCELLED
-        session_row.proposed_at = None
-        session_row.proposed_by = None
+    if session_row is None:
+        flash("Couldn't find that session, or it's not yours to cancel.", "error")
+        return back_to_dashboard()
+    if not session_row.is_live:
+        flash(f"That session is already '{session_row.status_label}' — nothing to cancel.", "error")
+        return back_to_dashboard()
 
-        actor_name = session["current_user"]["full_name"]
-        if session["current_role"] == "student":
-            add_notification("mentor", mentorship.mentor_id,
-                             f"{actor_name} cancelled the session: {session_row.topic}.", session_row.id)
-        else:
-            add_notification("student", mentorship.student_id,
-                             f"{actor_name} cancelled the session: {session_row.topic}.", session_row.id)
-        db.session.commit()
+    session_row.status = STATUS_CANCELLED
+    session_row.proposed_at = None
+    session_row.proposed_by = None
 
+    actor_name = session["current_user"]["full_name"]
+    if session["current_role"] == "student":
+        add_notification("mentor", mentorship.mentor_id,
+                         f"{actor_name} cancelled the session: {session_row.topic}.", session_row.id)
+    else:
+        add_notification("student", mentorship.student_id,
+                         f"{actor_name} cancelled the session: {session_row.topic}.", session_row.id)
+    db.session.commit()
+    flash(f"Cancelled '{session_row.topic}'.", "success")
     return back_to_dashboard()
 
 
@@ -835,18 +900,24 @@ def complete_session(session_id):
         return redirect(url_for("login_page"))
 
     session_row, mentorship = get_owned_session(session_id)
-    if session_row is not None and session_row.status == STATUS_CONFIRMED:
-        session_row.status = STATUS_COMPLETED
-        notes = request.form.get("notes", "").strip()
-        if notes:
-            session_row.notes = notes
-        add_notification(
-            "student", mentorship.student_id,
-            f"{session['current_user']['full_name']} marked '{session_row.topic}' as completed.",
-            session_row.id,
-        )
-        db.session.commit()
+    if session_row is None:
+        flash("Couldn't find that session, or it's not yours.", "error")
+        return redirect(url_for("mentor_page"))
+    if session_row.status != STATUS_CONFIRMED:
+        flash(f"That session is '{session_row.status_label}' — only a confirmed session can be marked complete.", "error")
+        return redirect(url_for("mentor_page"))
 
+    session_row.status = STATUS_COMPLETED
+    notes = request.form.get("notes", "").strip()
+    if notes:
+        session_row.notes = notes
+    add_notification(
+        "student", mentorship.student_id,
+        f"{session['current_user']['full_name']} marked '{session_row.topic}' as completed.",
+        session_row.id,
+    )
+    db.session.commit()
+    flash(f"Marked '{session_row.topic}' as completed.", "success")
     return redirect(url_for("mentor_page"))
 
 
@@ -856,22 +927,28 @@ def add_resource(mentorship_id):
         return redirect(url_for("login_page"))
 
     mentorship = get_owned_mentorship(mentorship_id)
-    if mentorship is not None:
-        title = request.form.get("title", "").strip()
-        resource_type = request.form.get("resource_type", "link").strip()
-        url_value = request.form.get("url", "").strip()
+    if mentorship is None:
+        flash("Couldn't share that resource — that mentorship isn't yours.", "error")
+        return redirect(url_for("mentor_page"))
 
-        if title and url_value:
-            db.session.add(Resource(
-                mentorship_id=mentorship.id,
-                title=title,
-                resource_type=resource_type if resource_type in {"pdf", "video", "code", "link"} else "link",
-                url=url_value,
-            ))
-            mentor_name = session["current_user"]["full_name"]
-            add_notification("student", mentorship.student_id, f"{mentor_name} shared a new resource: {title}.")
-            db.session.commit()
+    title = request.form.get("title", "").strip()
+    resource_type = request.form.get("resource_type", "link").strip()
+    url_value = request.form.get("url", "").strip()
 
+    if not title or not url_value:
+        flash("Couldn't share that resource — a title and a link are both required.", "error")
+        return redirect(url_for("mentor_page"))
+
+    db.session.add(Resource(
+        mentorship_id=mentorship.id,
+        title=title,
+        resource_type=resource_type if resource_type in {"pdf", "video", "code", "link"} else "link",
+        url=url_value,
+    ))
+    mentor_name = session["current_user"]["full_name"]
+    add_notification("student", mentorship.student_id, f"{mentor_name} shared a new resource: {title}.")
+    db.session.commit()
+    flash(f"Shared '{title}' with {mentorship.student.full_name}.", "success")
     return redirect(url_for("mentor_page"))
 
 
@@ -954,24 +1031,27 @@ def mentor_update_progress(mentorship_id):
 
     # Only allow a mentor to update progress on their own mentorship rows —
     # never someone else's student.
-    if mentorship is not None and mentorship.mentor_id == session["current_user"]["id"]:
-        raw_progress = request.form.get("progress", "").strip()
-        status = request.form.get("status", "").strip()
+    if mentorship is None or mentorship.mentor_id != session["current_user"]["id"]:
+        flash("Couldn't update progress — that student isn't yours.", "error")
+        return redirect(url_for("mentor_page"))
 
-        if raw_progress.isdigit():
-            mentorship.progress = max(0, min(100, int(raw_progress)))
+    raw_progress = request.form.get("progress", "").strip()
+    status = request.form.get("status", "").strip()
 
-        if status in {"active", "completed"}:
-            mentorship.status = status
+    if raw_progress.isdigit():
+        mentorship.progress = max(0, min(100, int(raw_progress)))
 
-        mentor_name = session["current_user"]["full_name"]
-        add_notification(
-            "student",
-            mentorship.student_id,
-            f"{mentor_name} updated your progress to {mentorship.progress}%.",
-        )
-        db.session.commit()
+    if status in {"active", "completed"}:
+        mentorship.status = status
 
+    mentor_name = session["current_user"]["full_name"]
+    add_notification(
+        "student",
+        mentorship.student_id,
+        f"{mentor_name} updated your progress to {mentorship.progress}%.",
+    )
+    db.session.commit()
+    flash(f"Updated {mentorship.student.full_name}'s progress to {mentorship.progress}%.", "success")
     return redirect(url_for("mentor_page"))
 
 

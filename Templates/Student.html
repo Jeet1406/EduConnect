@@ -54,6 +54,20 @@
 
     <main class="max-w-7xl mx-auto px-6 py-10">
 
+        {% with flashed = get_flashed_messages(with_categories=true) %}
+        {% if flashed %}
+        <div class="space-y-2 mb-6">
+            {% for category, message in flashed %}
+            <div class="flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold
+                {{ 'bg-red-50 text-red-700 border border-red-200' if category == 'error' else 'bg-emerald-50 text-emerald-700 border border-emerald-200' }}">
+                <span>{{ '⚠️' if category == 'error' else '✅' }}</span>
+                <span>{{ message }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
         <!-- ============================== OVERVIEW TAB ============================== -->
         {% if active_tab == 'overview' %}
 
