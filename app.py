@@ -1,19 +1,26 @@
 from datetime import date, datetime
 from calendar import Calendar
 from pathlib import Path
+from uuid import uuid4
 
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "EduConnect.db"
+UPLOAD_DIR = BASE_DIR / "static" / "uploads" / "resources"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+ALLOWED_RESOURCE_EXTENSIONS = {"pdf"}
 
 app = Flask(__name__, template_folder="Templates")
 app.config["SECRET_KEY"] = "educonnect-dev-secret-key-change-later"
 app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DATABASE_PATH.as_posix()}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["MAX_CONTENT_LENGTH"] = 15 * 1024 * 1024  # 15 MB cap on any single upload
 
 # Only people who know this key can create an admin account. Change this to
 # your own private value before deploying anywhere, and don't share it
@@ -921,6 +928,23 @@ def complete_session(session_id):
     return redirect(url_for("mentor_page"))
 
 
+def save_uploaded_pdf(file_storage):
+    """Save an uploaded PDF under static/uploads/resources with a collision-proof
+    name. Returns the static URL to store on the Resource row, or None if the
+    upload was missing/invalid — caller decides what error to show."""
+    if file_storage is None or not file_storage.filename:
+        return None, None
+
+    original_name = secure_filename(file_storage.filename)
+    extension = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
+    if extension not in ALLOWED_RESOURCE_EXTENSIONS:
+        return None, "error:type"
+
+    stored_name = f"{uuid4().hex}.{extension}"
+    file_storage.save(UPLOAD_DIR / stored_name)
+    return url_for("static", filename=f"uploads/resources/{stored_name}"), None
+
+
 @app.route("/resource/add/<int:mentorship_id>", methods=["POST"])
 def add_resource(mentorship_id):
     if session.get("current_role") != "mentor" or not session.get("current_user"):
@@ -933,16 +957,34 @@ def add_resource(mentorship_id):
 
     title = request.form.get("title", "").strip()
     resource_type = request.form.get("resource_type", "link").strip()
+    if resource_type not in {"pdf", "video", "code", "link"}:
+        resource_type = "link"
     url_value = request.form.get("url", "").strip()
+    uploaded_file = request.files.get("file")
 
-    if not title or not url_value:
-        flash("Couldn't share that resource — a title and a link are both required.", "error")
+    if not title:
+        flash("Couldn't share that resource — a title is required.", "error")
+        return redirect(url_for("mentor_page"))
+
+    # PDFs come in as an actual file upload; every other type is still a link
+    # (a video hosted elsewhere, a repo URL for code, or any other link).
+    if resource_type == "pdf":
+        saved_url, error = save_uploaded_pdf(uploaded_file)
+        if error == "error:type":
+            flash("Couldn't share that resource — only PDF files can be uploaded here.", "error")
+            return redirect(url_for("mentor_page"))
+        if saved_url is None:
+            flash("Couldn't share that resource — choose a PDF file to upload.", "error")
+            return redirect(url_for("mentor_page"))
+        url_value = saved_url
+    elif not url_value:
+        flash("Couldn't share that resource — a link is required for this type.", "error")
         return redirect(url_for("mentor_page"))
 
     db.session.add(Resource(
         mentorship_id=mentorship.id,
         title=title,
-        resource_type=resource_type if resource_type in {"pdf", "video", "code", "link"} else "link",
+        resource_type=resource_type,
         url=url_value,
     ))
     mentor_name = session["current_user"]["full_name"]
