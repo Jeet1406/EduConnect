@@ -34,7 +34,7 @@
                 <span class="text-2xl font-extrabold tracking-tight text-primary">EduConnect</span>
             </a>
 
-            <!-- Tabs (server-rendered — no JS needed) -->
+            <!-- Tabs -->
             <nav class="hidden md:flex items-center space-x-1 text-sm font-semibold">
                 <a href="/student?tab=overview" class="px-4 py-2 rounded-xl transition {{ 'bg-primary text-white shadow-sm' if active_tab == 'overview' else 'text-slate-500 hover:text-primary hover:bg-lightBg' }}">Dashboard</a>
                 <a href="/student?tab=sessions" class="px-4 py-2 rounded-xl transition {{ 'bg-primary text-white shadow-sm' if active_tab == 'sessions' else 'text-slate-500 hover:text-primary hover:bg-lightBg' }}">
@@ -108,7 +108,6 @@
                                 <p class="text-sm text-slate-700">{{ n.message }}</p>
                                 <span class="text-xs text-slate-400">{{ n.created_at.strftime('%d %b, %I:%M %p') }}</span>
 
-                                {# A notification tied to a session that still needs MY action gets its buttons right here #}
                                 {% if n.session_row and n.session_row.needs_action_from('student') %}
                                 <div class="flex flex-wrap gap-2 mt-2">
                                     {% if n.session_row.status == 'reschedule_by_mentor' %}
@@ -164,7 +163,16 @@
 
                     {% if next_session %}
                     <div class="mt-6 pt-6 border-t border-slate-100 flex items-center justify-between">
-                        <span class="text-xs text-slate-500">Next session: <strong class="text-primary">{{ next_session.topic }}</strong> with {{ next_session.mentorship.mentor.full_name }} on {{ next_session.scheduled_at.strftime('%d %b, %I:%M %p') }}</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-slate-500">Next session: <strong class="text-primary">{{ next_session.topic }}</strong> with {{ next_session.mentorship.mentor.full_name }} on {{ next_session.scheduled_at.strftime('%d %b, %I:%M %p') }}</span>
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded-md
+                                {{ 'bg-red-100 text-red-700' if next_session.priority == 'urgent'
+                                   else 'bg-amber-100 text-amber-700' if next_session.priority == 'high'
+                                   else 'bg-blue-100 text-blue-700' if next_session.priority == 'medium'
+                                   else 'bg-slate-200 text-slate-700' }}">
+                                {{ next_session.priority|capitalize }} Priority
+                            </span>
+                        </div>
                         <a href="/student?tab=sessions" class="bg-slate-100 hover:bg-slate-200 text-primary text-xs font-bold px-5 py-2.5 rounded-xl transition">View</a>
                     </div>
                     {% endif %}
@@ -210,7 +218,7 @@
             <!-- Right column -->
             <div class="lg:col-span-1 space-y-6">
 
-                <!-- Resources / Learning Library preview -->
+                <!-- Resources preview -->
                 <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
                     <div class="flex items-center justify-between mb-4">
                         <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400">Resources</h2>
@@ -231,18 +239,35 @@
                     {% endif %}
                 </div>
 
-                <!-- Find a mentor -->
+                <!-- Find a mentor with Search by Role & Name -->
                 <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                    <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">Find a mentor</h2>
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-3">Find a mentor</h2>
+
+                    <!-- Search Form -->
+                    <form method="get" action="/student" class="mb-4">
+                        <input type="hidden" name="tab" value="overview">
+                        <div class="flex gap-2">
+                            <input type="text" name="mentor_search" value="{{ mentor_search or '' }}" placeholder="Search by name, role, or skills..." class="w-full text-xs rounded-xl border border-slate-300 px-3 py-2 focus:border-secondary focus:outline-none">
+                            <button type="submit" class="bg-primary hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap shadow-xs">
+                                🔍 Search
+                            </button>
+                        </div>
+                        {% if mentor_search %}
+                        <div class="flex items-center justify-between mt-2 pt-1 text-xs">
+                            <span class="text-slate-500 text-[11px]">Filtered by: "<strong>{{ mentor_search }}</strong>"</span>
+                            <a href="/student?tab=overview" class="text-[11px] text-red-500 font-semibold hover:underline">Clear search</a>
+                        </div>
+                        {% endif %}
+                    </form>
 
                     {% if available_mentors %}
                     <div class="space-y-3">
                         {% for mentor in available_mentors %}
                         <div class="p-4 bg-lightBg rounded-2xl border border-slate-200">
-                            <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-start justify-between gap-2">
                                 <div>
                                     <h3 class="font-bold text-primary text-sm">{{ mentor.full_name }}</h3>
-                                    <p class="text-[11px] text-slate-500">{{ mentor.expertise }}</p>
+                                    <p class="text-[11px] text-slate-500 font-medium">{{ mentor.expertise }}</p>
                                     <span class="inline-block mt-1 text-[10px] font-bold text-secondary bg-emerald-50 px-2 py-0.5 rounded-full">{{ mentor.mentoring_format }}</span>
                                 </div>
                                 <form action="/student/connect/{{ mentor.id }}" method="post">
@@ -251,11 +276,23 @@
                                     </button>
                                 </form>
                             </div>
+                            <!-- Description / Specialities -->
+                            {% if mentor.description %}
+                            <p class="text-[11px] text-slate-600 mt-2.5 pt-2 border-t border-slate-200/70 leading-relaxed italic">
+                                "{{ mentor.description }}"
+                            </p>
+                            {% endif %}
                         </div>
                         {% endfor %}
                     </div>
                     {% else %}
-                    <p class="text-sm text-slate-500">You're already connected with every mentor on MentorBridge.</p>
+                    <p class="text-sm text-slate-500">
+                        {% if mentor_search %}
+                        No mentors found matching "{{ mentor_search }}". <a href="/student?tab=overview" class="text-secondary font-bold">Clear filter</a>
+                        {% else %}
+                        You're already connected with every mentor on MentorBridge.
+                        {% endif %}
+                    </p>
                     {% endif %}
                 </div>
             </div>
@@ -276,7 +313,7 @@
                 <summary class="list-none cursor-pointer bg-primary hover:bg-slate-800 text-white text-xs font-bold px-5 py-3 rounded-xl transition">+ Book New Session</summary>
                 <div class="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl p-5 z-10">
                     <h3 class="text-sm font-bold text-primary mb-3">Book a session</h3>
-                    <p class="text-[11px] text-slate-500 mb-3">Your mentor will need to confirm the time before it's final.</p>
+                    <p class="text-[11px] text-slate-500 mb-3">Your mentor will confirm the time before it's finalized.</p>
                     <form method="post" class="space-y-3" id="book-session-form" action="">
                         <select name="mentor_select" required onchange="document.getElementById('book-session-form').action = '/session/book/' + this.value" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2">
                             <option value="">Choose a mentor...</option>
@@ -312,7 +349,15 @@
             <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="font-bold text-primary">Next Session</h3>
-                    {% if next_session %}<span class="text-xs font-bold bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full">Confirmed</span>{% endif %}
+                    {% if next_session %}
+                    <span class="text-xs font-bold px-3 py-1 rounded-full
+                        {{ 'bg-red-100 text-red-700' if next_session.priority == 'urgent'
+                           else 'bg-amber-100 text-amber-700' if next_session.priority == 'high'
+                           else 'bg-blue-100 text-blue-700' if next_session.priority == 'medium'
+                           else 'bg-slate-200 text-slate-700' }}">
+                        {{ next_session.priority|capitalize }} Priority
+                    </span>
+                    {% endif %}
                 </div>
                 {% if next_session %}
                 <h4 class="font-bold text-primary text-sm">{{ next_session.mentorship.mentor.full_name }}</h4>
@@ -401,7 +446,17 @@
                        class="block p-4 rounded-2xl border {{ 'border-secondary bg-emerald-50/40' if selected_session and selected_session.id == s.id else 'border-slate-200 bg-lightBg' }}">
                         <div class="flex items-center justify-between gap-2">
                             <div>
-                                <h4 class="font-semibold text-primary text-sm">{{ s.topic }}</h4>
+                                <div class="flex items-center gap-2">
+                                    <h4 class="font-semibold text-primary text-sm">{{ s.topic }}</h4>
+                                    <!-- Priority Badge -->
+                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-md
+                                        {{ 'bg-red-100 text-red-700' if s.priority == 'urgent'
+                                           else 'bg-amber-100 text-amber-700' if s.priority == 'high'
+                                           else 'bg-blue-100 text-blue-700' if s.priority == 'medium'
+                                           else 'bg-slate-200 text-slate-700' }}">
+                                        {{ s.priority|capitalize }}
+                                    </span>
+                                </div>
                                 <p class="text-xs text-slate-500">Mentor {{ s.mentorship.mentor.full_name }}</p>
                                 <p class="text-[11px] text-slate-400">📅 {{ s.scheduled_at.strftime('%a, %d %b') }} &bull; 🕒 {{ s.scheduled_at.strftime('%I:%M %p') }}</p>
                                 {% if s.proposed_at %}<p class="text-[11px] text-blue-600 mt-0.5">↻ Proposed: {{ s.proposed_at.strftime('%a, %d %b %I:%M %p') }}</p>{% endif %}
@@ -430,7 +485,16 @@
                 {% set s = selected_session %}
                 <div class="flex items-start justify-between mb-4">
                     <div>
-                        <h4 class="font-bold text-primary">{{ s.topic }}</h4>
+                        <div class="flex items-center gap-2">
+                            <h4 class="font-bold text-primary">{{ s.topic }}</h4>
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded-md
+                                {{ 'bg-red-100 text-red-700' if s.priority == 'urgent'
+                                   else 'bg-amber-100 text-amber-700' if s.priority == 'high'
+                                   else 'bg-blue-100 text-blue-700' if s.priority == 'medium'
+                                   else 'bg-slate-200 text-slate-700' }}">
+                                {{ s.priority|capitalize }} Priority
+                            </span>
+                        </div>
                         <p class="text-sm text-slate-500">Mentor: {{ s.mentorship.mentor.full_name }}</p>
                     </div>
                     <span class="text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap

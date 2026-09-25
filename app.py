@@ -1,11 +1,11 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from calendar import Calendar
 from pathlib import Path
 from uuid import uuid4
 
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import text
+from sqlalchemy import text, or_
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -17,29 +17,26 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_RESOURCE_EXTENSIONS = {"pdf"}
 
 app = Flask(__name__, template_folder="Templates")
+
+# ===========================================================================
+# Session & Cookie Configuration (Prevents logout on refresh)
+# ===========================================================================
 app.config["SECRET_KEY"] = "educonnect-dev-secret-key-change-later"
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
+app.config["SESSION_COOKIE_NAME"] = "educonnect_session"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = False
+
+# Database configuration
 app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DATABASE_PATH.as_posix()}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["MAX_CONTENT_LENGTH"] = 15 * 1024 * 1024  # 15 MB cap on any single upload
+app.config["MAX_CONTENT_LENGTH"] = 15 * 1024 * 1024
 
-# Only people who know this key can create an admin account. Change this to
-# your own private value before deploying anywhere, and don't share it
-# beyond the one or two people you want as admins.
 ADMIN_SETUP_KEY = "CHANGE-THIS-TO-YOUR-OWN-SECRET-KEY"
 
 db = SQLAlchemy(app)
 
-
-# ---------------------------------------------------------------------------
-# Session status lifecycle
-#
-# pending_mentor         student booked; mentor must confirm or decline
-# confirmed              both sides agreed; Join button is live
-# declined               mentor refused; student can rebook
-# reschedule_by_mentor   mentor proposed a new time; student must accept
-# reschedule_by_student  student proposed a new time; mentor must accept
-# completed / cancelled  terminal
-# ---------------------------------------------------------------------------
 STATUS_PENDING_MENTOR = "pending_mentor"
 STATUS_CONFIRMED = "confirmed"
 STATUS_DECLINED = "declined"
@@ -48,14 +45,12 @@ STATUS_RESCHEDULE_BY_STUDENT = "reschedule_by_student"
 STATUS_COMPLETED = "completed"
 STATUS_CANCELLED = "cancelled"
 
-# Still on the calendar — not finished, not called off.
 LIVE_STATUSES = {
     STATUS_PENDING_MENTOR,
     STATUS_CONFIRMED,
     STATUS_RESCHEDULE_BY_MENTOR,
     STATUS_RESCHEDULE_BY_STUDENT,
 }
-# Waiting on somebody to press a button.
 AWAITING_STATUSES = {
     STATUS_PENDING_MENTOR,
     STATUS_RESCHEDULE_BY_MENTOR,
@@ -87,6 +82,7 @@ class Mentor(db.Model):
     email = db.Column(db.String(120), nullable=False, unique=True)
     expertise = db.Column(db.String(250), nullable=False)
     mentoring_format = db.Column(db.String(30), nullable=False)
+    description = db.Column(db.Text, nullable=True)  # Detailed bio & specialities
 
 
 class Admin(db.Model):
@@ -116,14 +112,12 @@ class Session(db.Model):
     mode = db.Column(db.String(50), nullable=False, default="Google Meet")
     topic = db.Column(db.String(200), nullable=False)
     status = db.Column(db.String(30), nullable=False, default=STATUS_PENDING_MENTOR)
+    priority = db.Column(db.String(20), nullable=False, default="medium")  # low, medium, high, urgent
     notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
-    # A reschedule that has been offered but not yet answered. The original
-    # scheduled_at stays untouched until the other side accepts, so declining
-    # costs nothing.
     proposed_at = db.Column(db.DateTime, nullable=True)
-    proposed_by = db.Column(db.String(10), nullable=True)  # "student" or "mentor"
+    proposed_by = db.Column(db.String(10), nullable=True)
 
     mentorship = db.relationship("Mentorship", backref="sessions")
 
@@ -136,7 +130,6 @@ class Session(db.Model):
         return self.status in LIVE_STATUSES
 
     def needs_action_from(self, role):
-        """True when this role is the one holding up the session."""
         if role == "mentor":
             return self.status in {STATUS_PENDING_MENTOR, STATUS_RESCHEDULE_BY_STUDENT}
         if role == "student":
@@ -148,7 +141,7 @@ class Resource(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     mentorship_id = db.Column(db.Integer, db.ForeignKey("mentorship.id"), nullable=False)
     title = db.Column(db.String(200), nullable=False)
-    resource_type = db.Column(db.String(20), nullable=False, default="link")  # pdf / video / code / link
+    resource_type = db.Column(db.String(20), nullable=False, default="link")
     url = db.Column(db.String(500), nullable=False)
     uploaded_at = db.Column(db.DateTime, server_default=db.func.now())
 
@@ -157,23 +150,17 @@ class Resource(db.Model):
 
 class Notification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    recipient_role = db.Column(db.String(10), nullable=False)  # "student" or "mentor"
+    recipient_role = db.Column(db.String(10), nullable=False)
     recipient_id = db.Column(db.Integer, nullable=False)
     message = db.Column(db.String(300), nullable=False)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     is_read = db.Column(db.Boolean, nullable=False, default=False)
-
-    # Lets the dashboard render Confirm / Decline / Accept buttons directly
-    # on the notification instead of making the user hunt for the session.
     session_id = db.Column(db.Integer, db.ForeignKey("session.id"), nullable=True)
 
     session_row = db.relationship("Session")
 
 
 def migrate_sqlite_schema():
-    """SQLite won't add columns to an existing table on create_all(), so add
-    the new session/notification columns by hand if the database predates them.
-    Safe to run on every boot — each step checks before it acts."""
     with db.engine.begin() as conn:
         session_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(session)"))}
         if session_cols:
@@ -181,10 +168,15 @@ def migrate_sqlite_schema():
                 conn.execute(text("ALTER TABLE session ADD COLUMN proposed_at DATETIME"))
             if "proposed_by" not in session_cols:
                 conn.execute(text("ALTER TABLE session ADD COLUMN proposed_by VARCHAR(10)"))
-            # Sessions booked under the old model were implicitly agreed.
+            if "priority" not in session_cols:
+                conn.execute(text("ALTER TABLE session ADD COLUMN priority VARCHAR(20) DEFAULT 'medium'"))
             conn.execute(text(
                 "UPDATE session SET status = :new WHERE status = :old"
             ), {"new": STATUS_CONFIRMED, "old": "upcoming"})
+
+        mentor_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(mentor)"))}
+        if mentor_cols and "description" not in mentor_cols:
+            conn.execute(text("ALTER TABLE mentor ADD COLUMN description TEXT"))
 
         notif_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(notification)"))}
         if notif_cols and "session_id" not in notif_cols:
@@ -197,13 +189,10 @@ with app.app_context():
 
 
 def admin_required():
-    """Returns True if the current session belongs to a logged-in admin."""
     return session.get("current_role") == "admin" and bool(session.get("current_user"))
 
 
 def add_notification(role, recipient_id, message, session_id=None):
-    """Create a notification for a student or mentor. Does not commit —
-    caller is expected to commit alongside whatever else it just changed."""
     db.session.add(Notification(
         recipient_role=role,
         recipient_id=recipient_id,
@@ -213,9 +202,7 @@ def add_notification(role, recipient_id, message, session_id=None):
 
 
 def get_owned_mentorship(mentorship_id):
-    """Return the Mentorship row only if the logged-in student or mentor
-    is actually part of it — prevents editing someone else's connection."""
-    mentorship = Mentorship.query.get(mentorship_id)
+    mentorship = db.session.get(Mentorship, mentorship_id)
     if mentorship is None:
         return None
 
@@ -231,9 +218,7 @@ def get_owned_mentorship(mentorship_id):
 
 
 def get_owned_session(session_id):
-    """Return (Session, Mentorship) only if the logged-in student or mentor
-    owns the mentorship the session belongs to."""
-    session_row = Session.query.get(session_id)
+    session_row = db.session.get(Session, session_id)
     if session_row is None:
         return None, None
 
@@ -251,10 +236,6 @@ def parse_datetime(date_str, time_str):
 
 
 def back_to_dashboard():
-    """Both roles land back on their own dashboard after acting on a session.
-    For students this preserves whichever tab the action was taken from
-    (each session/resource form carries a hidden `return_tab` field) so a
-    Confirm or Cancel click doesn't bounce them back to Overview."""
     if session.get("current_role") == "student":
         tab = request.form.get("return_tab", "sessions")
         return redirect(url_for("student_page", tab=tab))
@@ -262,8 +243,6 @@ def back_to_dashboard():
 
 
 def build_calendar_weeks(sessions):
-    """Real calendar grid for the current month, marking days that actually
-    have sessions on them."""
     today = date.today()
     sessions_by_day = {}
     for s in sessions:
@@ -299,6 +278,12 @@ def home_page():
 
 @app.route("/login", methods=["GET", "POST"])
 def login_page():
+    if session.get("current_user") and session.get("current_role"):
+        if session["current_role"] == "student":
+            return redirect(url_for("student_page"))
+        elif session["current_role"] == "mentor":
+            return redirect(url_for("mentor_page"))
+
     error_message = None
 
     if request.method == "POST":
@@ -318,6 +303,7 @@ def login_page():
                 error_message = "Name and email do not match. Please try again."
             else:
                 session.clear()
+                session.permanent = True
                 session["current_role"] = role
                 session["current_user"] = {
                     "id": user.id,
@@ -376,6 +362,7 @@ def register_page():
             email = request.form.get("email", "").strip()
             expertise = request.form.get("expertise", "").strip()
             mentoring_format = request.form.get("mentoring_format", "").strip()
+            description = request.form.get("description", "").strip()
 
             if full_name and email and expertise and mentoring_format:
                 existing = Mentor.query.filter_by(email=email).first()
@@ -387,6 +374,7 @@ def register_page():
                         email=email,
                         expertise=expertise,
                         mentoring_format=mentoring_format,
+                        description=description,
                     )
                     db.session.add(mentor)
                     db.session.commit()
@@ -446,12 +434,11 @@ def mentors_list_page():
 
 @app.route("/student")
 def student_page():
-    """One merged dashboard: overview, sessions and resources as tabs.
-    Everything below is a live query — nothing on this page is hardcoded."""
     if session.get("current_role") != "student" or not session.get("current_user"):
         return redirect(url_for("login_page"))
 
-    student = Student.query.get(session["current_user"]["id"])
+    user_id = int(session["current_user"]["id"])
+    student = db.session.get(Student, user_id)
     if student is None:
         session.clear()
         return redirect(url_for("login_page"))
@@ -459,11 +446,27 @@ def student_page():
     my_mentorships = Mentorship.query.filter_by(student_id=student.id).all()
     mentorship_ids = [m.id for m in my_mentorships]
     connected_mentor_ids = {m.mentor_id for m in my_mentorships}
-    available_mentors = (
-        Mentor.query.filter(~Mentor.id.in_(connected_mentor_ids)).order_by(Mentor.full_name).all()
+
+    # Mentor Search by name, role/expertise, or specialities
+    mentor_search = request.args.get("mentor_search", "").strip()
+    available_mentors_query = (
+        Mentor.query.filter(~Mentor.id.in_(connected_mentor_ids))
         if connected_mentor_ids
-        else Mentor.query.order_by(Mentor.full_name).all()
+        else Mentor.query
     )
+
+    if mentor_search:
+        term = f"%{mentor_search}%"
+        available_mentors_query = available_mentors_query.filter(
+            or_(
+                Mentor.full_name.ilike(term),
+                Mentor.expertise.ilike(term),
+                Mentor.mentoring_format.ilike(term),
+                Mentor.description.ilike(term),
+            )
+        )
+
+    available_mentors = available_mentors_query.order_by(Mentor.full_name).all()
 
     all_sessions = (
         Session.query.filter(Session.mentorship_id.in_(mentorship_ids))
@@ -482,7 +485,6 @@ def student_page():
     total_hours = round(sum(s.duration_minutes for s in completed_sessions) / 60, 1)
     next_session = min(confirmed_sessions, key=lambda s: s.scheduled_at) if confirmed_sessions else None
 
-    # Sessions tab filter
     status_filter = request.args.get("filter", "all")
     if status_filter == "action":
         filtered_sessions = action_sessions
@@ -503,7 +505,6 @@ def student_page():
 
     calendar_weeks, month_label = build_calendar_weeks([s for s in all_sessions if s.is_live])
 
-    # Resources tab — pulled from the Resource table, filtered server-side.
     all_resources = (
         Resource.query.filter(Resource.mentorship_id.in_(mentorship_ids))
         .order_by(Resource.uploaded_at.desc())
@@ -536,8 +537,8 @@ def student_page():
         student=student,
         my_mentorships=my_mentorships,
         available_mentors=available_mentors,
+        mentor_search=mentor_search,
         active_tab=request.args.get("tab", "overview"),
-        # sessions
         sessions=filtered_sessions,
         all_sessions=all_sessions,
         status_filter=status_filter,
@@ -553,13 +554,11 @@ def student_page():
         total_hours=total_hours,
         calendar_weeks=calendar_weeks,
         month_label=month_label,
-        # resources
         resources=filtered_resources,
         recent_resources=all_resources[:3],
         resources_total=len(all_resources),
         query=query,
         type_filter=type_filter,
-        # shared
         avg_progress=avg_progress,
         notifications=notifications,
         unread_count=unread_count,
@@ -570,8 +569,6 @@ def student_page():
 
 @app.route("/student/sessions")
 def student_sessions_page():
-    """Kept so old links and bookmarks still work — the sessions view now
-    lives as a tab on the main dashboard."""
     args = request.args.to_dict()
     args["tab"] = "sessions"
     return redirect(url_for("student_page", **args))
@@ -591,7 +588,7 @@ def student_connect_mentor(mentor_id):
 
     student_id = session["current_user"]["id"]
     student_name = session["current_user"]["full_name"]
-    mentor = Mentor.query.get(mentor_id)
+    mentor = db.session.get(Mentor, mentor_id)
 
     if mentor is None:
         flash("That mentor no longer exists.", "error")
@@ -610,34 +607,26 @@ def student_connect_mentor(mentor_id):
     return redirect(url_for("student_page"))
 
 
-# ---------------------------------------------------------------------------
-# Session booking and the confirm / reschedule handshake
-# ---------------------------------------------------------------------------
-
 @app.route("/session/book/<int:mentorship_id>", methods=["POST"])
 def book_session(mentorship_id):
-    """A student booking asks the mentor to confirm. A mentor scheduling
-    directly is already confirmed on their side, so it goes straight through."""
     if session.get("current_role") not in {"student", "mentor"} or not session.get("current_user"):
         return redirect(url_for("login_page"))
 
     mentorship = get_owned_mentorship(mentorship_id)
     if mentorship is None:
-        # Most common cause: the session cookie's role/id doesn't actually
-        # own this mentorship — e.g. you're logged in as the mentor in this
-        # tab but the form still shows the student view from another tab.
-        flash("Couldn't book that session — you don't have access to that mentorship. "
-              "Check you're logged in as the right account in this tab.", "error")
+        flash("Couldn't book that session — you don't have access to that mentorship.", "error")
         return back_to_dashboard()
 
     duration = request.form.get("duration", "60").strip()
     mode = request.form.get("mode", "Google Meet").strip() or "Google Meet"
     topic = request.form.get("topic", "").strip()
     scheduled_at = parse_datetime(request.form.get("date", ""), request.form.get("time", ""))
+    priority = request.form.get("priority", "medium").strip().lower()
+    if priority not in {"low", "medium", "high", "urgent"}:
+        priority = "medium"
 
     if scheduled_at is None or not topic or not duration.isdigit():
-        flash("Couldn't book that session — please fill in a topic, a valid date and time, "
-              "and a duration.", "error")
+        flash("Couldn't book that session — please fill in all required fields.", "error")
         return back_to_dashboard()
 
     booked_by_student = session["current_role"] == "student"
@@ -648,9 +637,10 @@ def book_session(mentorship_id):
         mode=mode,
         topic=topic,
         status=STATUS_PENDING_MENTOR if booked_by_student else STATUS_CONFIRMED,
+        priority=priority,
     )
     db.session.add(new_session)
-    db.session.flush()  # need new_session.id for the notification link
+    db.session.flush()
 
     actor_name = session["current_user"]["full_name"]
     when = scheduled_at.strftime("%a %d %b, %I:%M %p")
@@ -660,15 +650,12 @@ def book_session(mentorship_id):
             f"{actor_name} requested a session: {topic} — {when}. Confirm or propose another time.",
             new_session.id,
         )
-        # Self-notification so the student who just booked also sees
-        # confirmation on their own screen, not just the mentor's inbox.
         add_notification(
             "student", mentorship.student_id,
             f"Request sent to {mentorship.mentor.full_name} for '{topic}' — {when}. Waiting for confirmation.",
             new_session.id,
         )
-        flash(f"Booking request sent to {mentorship.mentor.full_name}. "
-              f"You'll be notified once they confirm.", "success")
+        flash(f"Booking request sent to {mentorship.mentor.full_name}.", "success")
     else:
         add_notification(
             "student", mentorship.student_id,
@@ -681,9 +668,30 @@ def book_session(mentorship_id):
     return back_to_dashboard()
 
 
+@app.route("/session/<int:session_id>/priority", methods=["POST"])
+def update_session_priority(session_id):
+    """Allows mentors to set/change the priority of a session."""
+    if session.get("current_role") != "mentor" or not session.get("current_user"):
+        return redirect(url_for("login_page"))
+
+    session_row, mentorship = get_owned_session(session_id)
+    if session_row is None:
+        flash("Couldn't find that session, or it's not yours to modify.", "error")
+        return redirect(url_for("mentor_page"))
+
+    new_priority = request.form.get("priority", "medium").strip().lower()
+    if new_priority in {"low", "medium", "high", "urgent"}:
+        session_row.priority = new_priority
+        db.session.commit()
+        flash(f"Priority for '{session_row.topic}' updated to {new_priority.capitalize()}.", "success")
+    else:
+        flash("Invalid priority selected.", "error")
+
+    return redirect(url_for("mentor_page"))
+
+
 @app.route("/session/<int:session_id>/confirm", methods=["POST"])
 def confirm_session(session_id):
-    """Mentor accepts the student's requested slot as-is."""
     if session.get("current_role") != "mentor" or not session.get("current_user"):
         return redirect(url_for("login_page"))
 
@@ -710,7 +718,6 @@ def confirm_session(session_id):
 
 @app.route("/session/<int:session_id>/decline", methods=["POST"])
 def decline_session(session_id):
-    """Mentor turns the request down. The student can book a fresh slot."""
     if session.get("current_role") != "mentor" or not session.get("current_user"):
         return redirect(url_for("login_page"))
 
@@ -739,8 +746,6 @@ def decline_session(session_id):
 
 @app.route("/session/<int:session_id>/propose", methods=["POST"])
 def propose_reschedule(session_id):
-    """Either side offers a different time. The existing scheduled_at is left
-    alone until the other side accepts, so nothing is lost if they decline."""
     if session.get("current_role") not in {"student", "mentor"} or not session.get("current_user"):
         return redirect(url_for("login_page"))
 
@@ -785,15 +790,12 @@ def propose_reschedule(session_id):
 
 @app.route("/session/<int:session_id>/accept-proposal", methods=["POST"])
 def accept_reschedule(session_id):
-    """The side that did NOT propose accepts — the new time becomes real and
-    the session is confirmed."""
     if session.get("current_role") not in {"student", "mentor"} or not session.get("current_user"):
         return redirect(url_for("login_page"))
 
     session_row, mentorship = get_owned_session(session_id)
     role = session["current_role"]
 
-    # Only the other party may accept; you can't rubber-stamp your own proposal.
     expected = {
         "student": STATUS_RESCHEDULE_BY_MENTOR,
         "mentor": STATUS_RESCHEDULE_BY_STUDENT,
@@ -803,8 +805,7 @@ def accept_reschedule(session_id):
         flash("Couldn't find that session, or it's not yours.", "error")
         return back_to_dashboard()
     if session_row.status != expected or session_row.proposed_at is None:
-        flash("There's no pending proposal on that session for you to accept "
-              "(it may have already been resolved).", "error")
+        flash("There's no pending proposal on that session for you to accept.", "error")
         return back_to_dashboard()
 
     session_row.scheduled_at = session_row.proposed_at
@@ -814,18 +815,13 @@ def accept_reschedule(session_id):
 
     actor_name = session["current_user"]["full_name"]
     when = session_row.scheduled_at.strftime("%a %d %b, %I:%M %p")
-    if role == "student":
-        add_notification(
-            "mentor", mentorship.mentor_id,
-            f"{actor_name} accepted your new time for '{session_row.topic}': {when}.",
-            session_row.id,
-        )
-    else:
-        add_notification(
-            "student", mentorship.student_id,
-            f"{actor_name} accepted your new time for '{session_row.topic}': {when}.",
-            session_row.id,
-        )
+    target_role = "mentor" if role == "student" else "student"
+    target_id = mentorship.mentor_id if role == "student" else mentorship.student_id
+    add_notification(
+        target_role, target_id,
+        f"{actor_name} accepted your new time for '{session_row.topic}': {when}.",
+        session_row.id,
+    )
     db.session.commit()
     flash(f"'{session_row.topic}' confirmed for {when}.", "success")
     return back_to_dashboard()
@@ -833,9 +829,6 @@ def accept_reschedule(session_id):
 
 @app.route("/session/<int:session_id>/reject-proposal", methods=["POST"])
 def reject_reschedule(session_id):
-    """Declining a proposed time drops the offer and hands the session back to
-    the mentor to confirm the original slot or suggest something else. Nothing
-    is cancelled — the original scheduled_at was never overwritten."""
     if session.get("current_role") not in {"student", "mentor"} or not session.get("current_user"):
         return redirect(url_for("login_page"))
 
@@ -850,8 +843,7 @@ def reject_reschedule(session_id):
         flash("Couldn't find that session, or it's not yours.", "error")
         return back_to_dashboard()
     if session_row.status != expected:
-        flash("There's no pending proposal on that session to decline "
-              "(it may have already been resolved).", "error")
+        flash("There's no pending proposal on that session to decline.", "error")
         return back_to_dashboard()
 
     session_row.proposed_at = None
@@ -929,9 +921,6 @@ def complete_session(session_id):
 
 
 def save_uploaded_pdf(file_storage):
-    """Save an uploaded PDF under static/uploads/resources with a collision-proof
-    name. Returns the static URL to store on the Resource row, or None if the
-    upload was missing/invalid — caller decides what error to show."""
     if file_storage is None or not file_storage.filename:
         return None, None
 
@@ -966,8 +955,6 @@ def add_resource(mentorship_id):
         flash("Couldn't share that resource — a title is required.", "error")
         return redirect(url_for("mentor_page"))
 
-    # PDFs come in as an actual file upload; every other type is still a link
-    # (a video hosted elsewhere, a repo URL for code, or any other link).
     if resource_type == "pdf":
         saved_url, error = save_uploaded_pdf(uploaded_file)
         if error == "error:type":
@@ -1014,9 +1001,8 @@ def mentor_page():
     if session.get("current_role") != "mentor" or not session.get("current_user"):
         return redirect(url_for("login_page"))
 
-    # Only the logged-in mentor's own record is fetched here — this is the
-    # mentor viewing their own profile, not a listing of other users' data.
-    mentor = Mentor.query.get(session["current_user"]["id"])
+    user_id = int(session["current_user"]["id"])
+    mentor = db.session.get(Mentor, user_id)
     if mentor is None:
         session.clear()
         return redirect(url_for("login_page"))
@@ -1033,8 +1019,6 @@ def mentor_page():
         else []
     )
 
-    # Requests sitting on the mentor's desk: new bookings to confirm, plus
-    # reschedules the student has proposed.
     pending_requests = [s for s in all_sessions if s.needs_action_from("mentor")]
     upcoming_sessions = [s for s in all_sessions if s.status == STATUS_CONFIRMED]
 
@@ -1069,10 +1053,8 @@ def mentor_update_progress(mentorship_id):
     if session.get("current_role") != "mentor" or not session.get("current_user"):
         return redirect(url_for("login_page"))
 
-    mentorship = Mentorship.query.get(mentorship_id)
+    mentorship = db.session.get(Mentorship, mentorship_id)
 
-    # Only allow a mentor to update progress on their own mentorship rows —
-    # never someone else's student.
     if mentorship is None or mentorship.mentor_id != session["current_user"]["id"]:
         flash("Couldn't update progress — that student isn't yours.", "error")
         return redirect(url_for("mentor_page"))
@@ -1148,6 +1130,7 @@ def admin_login_page():
             error_message = "Incorrect email or password."
         else:
             session.clear()
+            session.permanent = True
             session["current_role"] = "admin"
             session["current_user"] = {
                 "id": admin.id,

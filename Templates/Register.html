@@ -21,39 +21,56 @@
     </script>
 </head>
 <body class="bg-lightBg text-slate-900 font-sans antialiased min-h-screen">
+    <!-- Header -->
     <header class="border-b border-slate-200 bg-white">
         <div class="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
-            <div>
-                <a href="/Home" class="text-2xl font-bold text-primary">EduConnect</a>
-                <p class="text-sm text-slate-500">Create a new account</p>
-            </div>
+            <a href="/Home" class="flex items-center space-x-2">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white font-bold text-xl shadow-md">
+                    <img src="{{ url_for('static', filename='logo.jpg') }}" alt="EduConnect logo" class="w-10 h-10 rounded-xl object-cover">
+                </div>
+                <span class="text-2xl font-extrabold tracking-tight text-primary">EduConnect</span>
+            </a>
             <nav class="flex gap-4 text-sm font-semibold text-primary">
                 <a href="/login">Login</a>
-                <a href="/Home">Home</a>
             </nav>
         </div>
     </header>
 
-    <main class="max-w-3xl mx-auto px-6 py-16">
-        <section class="rounded-3xl border border-slate-200 bg-white p-10 shadow-xl">
-            <h1 class="text-4xl font-extrabold text-primary">Create your account</h1>
-            <p class="mt-3 text-slate-600">
-                Register once, then use the <a href="/login" class="font-semibold text-secondary">login page</a> to reach your dashboard.
+    <main class="max-w-3xl mx-auto px-6 py-12">
+        <section class="rounded-3xl border border-slate-200 bg-white p-8 sm:p-10 shadow-xl">
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-primary">Create an Account</h1>
+            <p class="mt-2 text-slate-600 text-sm">
+                Join EduConnect as a student looking to learn or as a mentor sharing your expertise.
             </p>
 
-            <div class="mt-8 flex rounded-2xl border border-slate-200 p-1 bg-slate-50" role="tablist">
-                <a href="/register?role=student"
-                   class="flex-1 text-center rounded-xl px-4 py-2 text-sm font-bold {{ 'bg-white shadow text-primary' if selected_role == 'student' else 'text-slate-500' }}">
-                    I'm a Student
-                </a>
-                <a href="/register?role=mentor"
-                   class="flex-1 text-center rounded-xl px-4 py-2 text-sm font-bold {{ 'bg-white shadow text-primary' if selected_role == 'mentor' else 'text-slate-500' }}">
-                    I'm a Mentor
-                </a>
-            </div>
+            <!-- Role Selector -->
+            <form action="/choose-role" method="post" class="mt-6">
+                <fieldset>
+                    <legend class="text-sm font-semibold text-slate-700 mb-3">I want to register as</legend>
+                    <div class="grid sm:grid-cols-2 gap-4">
+                        <label class="flex items-start gap-3 rounded-2xl border p-4 cursor-pointer transition {{ 'border-secondary bg-emerald-50/40 ring-2 ring-secondary' if selected_role == 'student' else 'border-slate-200 hover:bg-slate-50' }}">
+                            <input type="radio" name="role" value="student" onchange="this.form.submit()" {{ 'checked' if selected_role == 'student' }} class="mt-1 h-4 w-4 text-secondary focus:ring-secondary">
+                            <span>
+                                <span class="block font-semibold text-primary">Student</span>
+                                <span class="block text-xs text-slate-500">Connect with mentors and book sessions.</span>
+                            </span>
+                        </label>
+                        <label class="flex items-start gap-3 rounded-2xl border p-4 cursor-pointer transition {{ 'border-secondary bg-emerald-50/40 ring-2 ring-secondary' if selected_role == 'mentor' else 'border-slate-200 hover:bg-slate-50' }}">
+                            <input type="radio" name="role" value="mentor" onchange="this.form.submit()" {{ 'checked' if selected_role == 'mentor' }} class="mt-1 h-4 w-4 text-secondary focus:ring-secondary">
+                            <span>
+                                <span class="block font-semibold text-primary">Mentor</span>
+                                <span class="block text-xs text-slate-500">Guide mentees, share resources &amp; manage sessions.</span>
+                            </span>
+                        </label>
+                    </div>
+                </fieldset>
+            </form>
 
+            <!-- STUDENT FORM -->
             {% if selected_role == 'student' %}
-            <div class="mt-8">
+            <div class="mt-8 pt-6 border-t border-slate-200">
+                <h2 class="text-lg font-bold text-primary mb-4">Student Details</h2>
+
                 {% if student_success_message %}
                 <div class="mb-6 rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-700">
                     {{ student_success_message }}
@@ -70,49 +87,53 @@
                     <input type="hidden" name="role" value="student">
                     <div>
                         <label for="s_full_name" class="block text-sm font-semibold text-slate-700">Full name</label>
-                        <input id="s_full_name" name="full_name" type="text" required class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-secondary focus:outline-none">
+                        <input id="s_full_name" name="full_name" type="text" required placeholder="Your full name" class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-secondary focus:outline-none text-sm">
                     </div>
                     <div>
                         <label for="s_email" class="block text-sm font-semibold text-slate-700">Email</label>
-                        <input id="s_email" name="email" type="email" required class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-secondary focus:outline-none">
+                        <input id="s_email" name="email" type="email" required placeholder="your.email@example.com" class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-secondary focus:outline-none text-sm">
                     </div>
                     <div>
                         <label for="s_goal" class="block text-sm font-semibold text-slate-700">Learning goal</label>
-                        <input id="s_goal" name="goal" type="text" required placeholder="Example: Improve Python and Flask skills" class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-secondary focus:outline-none">
+                        <input id="s_goal" name="goal" type="text" required placeholder="Example: Master Python & Data Structures" class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-secondary focus:outline-none text-sm">
                     </div>
                     <fieldset>
                         <legend class="text-sm font-semibold text-slate-700 mb-3">Preferred learning mode</legend>
                         <div class="space-y-3">
                             <label class="flex items-start gap-3 rounded-2xl border border-slate-200 p-4 cursor-pointer hover:bg-slate-50">
-                                <input type="radio" name="learning_mode" value="Online" required class="mt-1 h-4 w-4 text-secondary focus:ring-secondary">
+                                <input type="radio" name="learning_mode" value="Online" checked class="mt-1 h-4 w-4 text-secondary focus:ring-secondary">
                                 <span>
                                     <span class="block font-semibold text-primary">Online</span>
-                                    <span class="block text-sm text-slate-500">For video calls and remote sessions.</span>
+                                    <span class="block text-xs text-slate-500">Virtual video calls and remote guidance.</span>
                                 </span>
                             </label>
                             <label class="flex items-start gap-3 rounded-2xl border border-slate-200 p-4 cursor-pointer hover:bg-slate-50">
                                 <input type="radio" name="learning_mode" value="Offline" class="mt-1 h-4 w-4 text-secondary focus:ring-secondary">
                                 <span>
                                     <span class="block font-semibold text-primary">Offline</span>
-                                    <span class="block text-sm text-slate-500">For in-person classes or meetings.</span>
+                                    <span class="block text-xs text-slate-500">For in-person classes or meetings.</span>
                                 </span>
                             </label>
                             <label class="flex items-start gap-3 rounded-2xl border border-slate-200 p-4 cursor-pointer hover:bg-slate-50">
                                 <input type="radio" name="learning_mode" value="Hybrid" class="mt-1 h-4 w-4 text-secondary focus:ring-secondary">
                                 <span>
                                     <span class="block font-semibold text-primary">Hybrid</span>
-                                    <span class="block text-sm text-slate-500">For both online and offline learning.</span>
+                                    <span class="block text-xs text-slate-500">For both online and offline learning.</span>
                                 </span>
                             </label>
                         </div>
                     </fieldset>
-                    <button type="submit" class="w-full rounded-2xl bg-accent px-6 py-3 font-bold text-slate-900 hover:bg-amber-400">
+                    <button type="submit" class="w-full rounded-2xl bg-accent px-6 py-3.5 font-bold text-slate-900 hover:bg-amber-400 shadow-md">
                         Create student account
                     </button>
                 </form>
             </div>
+
+            <!-- MENTOR FORM -->
             {% else %}
-            <div class="mt-8">
+            <div class="mt-8 pt-6 border-t border-slate-200">
+                <h2 class="text-lg font-bold text-primary mb-4">Mentor Details</h2>
+
                 {% if mentor_success_message %}
                 <div class="mb-6 rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-700">
                     {{ mentor_success_message }}
@@ -129,16 +150,24 @@
                     <input type="hidden" name="role" value="mentor">
                     <div>
                         <label for="m_full_name" class="block text-sm font-semibold text-slate-700">Full name</label>
-                        <input id="m_full_name" name="full_name" type="text" required class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-secondary focus:outline-none">
+                        <input id="m_full_name" name="full_name" type="text" required placeholder="Your full name" class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-secondary focus:outline-none text-sm">
                     </div>
                     <div>
                         <label for="m_email" class="block text-sm font-semibold text-slate-700">Email</label>
-                        <input id="m_email" name="email" type="email" required class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-secondary focus:outline-none">
+                        <input id="m_email" name="email" type="email" required placeholder="your.email@example.com" class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-secondary focus:outline-none text-sm">
                     </div>
                     <div>
-                        <label for="m_expertise" class="block text-sm font-semibold text-slate-700">Expertise</label>
-                        <input id="m_expertise" name="expertise" type="text" required placeholder="Example: Python, DSA, UI design" class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-secondary focus:outline-none">
+                        <label for="m_expertise" class="block text-sm font-semibold text-slate-700">Expertise / Skills</label>
+                        <input id="m_expertise" name="expertise" type="text" required placeholder="Example: Python, Machine Learning, Web Dev" class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-secondary focus:outline-none text-sm">
                     </div>
+
+                    <!-- Description / Specialities Text Area -->
+                    <div>
+                        <label for="m_description" class="block text-sm font-semibold text-slate-700">Description &amp; Specialities</label>
+                        <textarea id="m_description" name="description" rows="3" placeholder="Tell students about your experience, background, specialities, or what areas you can guide them in..." class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 focus:border-secondary focus:outline-none text-sm"></textarea>
+                        <p class="text-xs text-slate-400 mt-1">This will be shown on your profile and helps students choose you as their mentor.</p>
+                    </div>
+
                     <fieldset>
                         <legend class="text-sm font-semibold text-slate-700 mb-3">Mentoring format</legend>
                         <div class="space-y-3">
@@ -146,31 +175,37 @@
                                 <input type="radio" name="mentoring_format" value="One to one" required class="mt-1 h-4 w-4 text-secondary focus:ring-secondary">
                                 <span>
                                     <span class="block font-semibold text-primary">One to one</span>
-                                    <span class="block text-sm text-slate-500">Personal sessions with one student at a time.</span>
+                                    <span class="block text-xs text-slate-500">Personal sessions with one student at a time.</span>
                                 </span>
                             </label>
                             <label class="flex items-start gap-3 rounded-2xl border border-slate-200 p-4 cursor-pointer hover:bg-slate-50">
                                 <input type="radio" name="mentoring_format" value="Group" class="mt-1 h-4 w-4 text-secondary focus:ring-secondary">
                                 <span>
                                     <span class="block font-semibold text-primary">Group</span>
-                                    <span class="block text-sm text-slate-500">Teach multiple students together.</span>
+                                    <span class="block text-xs text-slate-500">Teach multiple students together.</span>
                                 </span>
                             </label>
                             <label class="flex items-start gap-3 rounded-2xl border border-slate-200 p-4 cursor-pointer hover:bg-slate-50">
                                 <input type="radio" name="mentoring_format" value="Both" class="mt-1 h-4 w-4 text-secondary focus:ring-secondary">
                                 <span>
                                     <span class="block font-semibold text-primary">Both</span>
-                                    <span class="block text-sm text-slate-500">Offer one to one and group sessions.</span>
+                                    <span class="block text-xs text-slate-500">Offer one to one and group sessions.</span>
                                 </span>
                             </label>
                         </div>
                     </fieldset>
-                    <button type="submit" class="w-full rounded-2xl bg-accent px-6 py-3 font-bold text-slate-900 hover:bg-amber-400">
+                    <button type="submit" class="w-full rounded-2xl bg-accent px-6 py-3.5 font-bold text-slate-900 hover:bg-amber-400 shadow-md">
                         Create mentor account
                     </button>
                 </form>
             </div>
             {% endif %}
+
+            <div class="mt-6 pt-4 border-t border-slate-100 text-center">
+                <p class="text-sm text-slate-500">
+                    Already have an account? <a href="/login" class="font-bold text-secondary hover:underline">Log in</a>
+                </p>
+            </div>
         </section>
     </main>
 </body>
