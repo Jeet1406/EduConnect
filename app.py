@@ -26,17 +26,24 @@ app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 app.config["SESSION_COOKIE_NAME"] = "educonnect_session"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = False
+app.config["SESSION_COOKIE_SECURE"] = False  # Set to True only when deploying with HTTPS
 
 # Database configuration
 app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DATABASE_PATH.as_posix()}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["MAX_CONTENT_LENGTH"] = 15 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 15 * 1024 * 1024  # 15 MB cap on any single upload
 
 ADMIN_SETUP_KEY = "CHANGE-THIS-TO-YOUR-OWN-SECRET-KEY"
 
+# Time limit in hours to accept/respond to a session booking or reschedule proposal
+RESPONSE_TIME_LIMIT_HOURS = 24
+
 db = SQLAlchemy(app)
 
+
+# ---------------------------------------------------------------------------
+# Session status lifecycle & Priority Queue Rankings
+# ---------------------------------------------------------------------------
 STATUS_PENDING_MENTOR = "pending_mentor"
 STATUS_CONFIRMED = "confirmed"
 STATUS_DECLINED = "declined"
@@ -44,13 +51,17 @@ STATUS_RESCHEDULE_BY_MENTOR = "reschedule_by_mentor"
 STATUS_RESCHEDULE_BY_STUDENT = "reschedule_by_student"
 STATUS_COMPLETED = "completed"
 STATUS_CANCELLED = "cancelled"
+STATUS_NOT_RESPONDED = "not_responded"  # Auto-expired booking/reschedule request
 
+# Still on active calendar/queue (not completed, not cancelled, not expired)
 LIVE_STATUSES = {
     STATUS_PENDING_MENTOR,
     STATUS_CONFIRMED,
     STATUS_RESCHEDULE_BY_MENTOR,
     STATUS_RESCHEDULE_BY_STUDENT,
 }
+
+# Awaiting user response
 AWAITING_STATUSES = {
     STATUS_PENDING_MENTOR,
     STATUS_RESCHEDULE_BY_MENTOR,
@@ -65,6 +76,15 @@ STATUS_LABELS = {
     STATUS_RESCHEDULE_BY_STUDENT: "Student proposed a new time",
     STATUS_COMPLETED: "Completed",
     STATUS_CANCELLED: "Cancelled",
+    STATUS_NOT_RESPONDED: "Not responded (Expired)",
+}
+
+# Priority Queue weights: Urgent is 1 (highest priority), Low is 4 (lowest priority)
+PRIORITY_ORDER = {
+    "urgent": 1,
+    "high": 2,
+    "medium": 3,
+    "low": 4,
 }
 
 
@@ -117,9 +137,14 @@ class Session(db.Model):
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
     proposed_at = db.Column(db.DateTime, nullable=True)
-    proposed_by = db.Column(db.String(10), nullable=True)
+    proposed_by = db.Column(db.String(10), nullable=True)  # "student" or "mentor"
 
     mentorship = db.relationship("Mentorship", backref="sessions")
+
+    @property
+    def priority_rank(self):
+        """Priority queue rank: lower number = higher priority."""
+        return PRIORITY_ORDER.get(self.priority, 3)
 
     @property
     def status_label(self):
@@ -161,6 +186,7 @@ class Notification(db.Model):
 
 
 def migrate_sqlite_schema():
+    """Add newly introduced columns safely if upgrading an existing SQLite database."""
     with db.engine.begin() as conn:
         session_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(session)"))}
         if session_cols:
@@ -186,6 +212,58 @@ def migrate_sqlite_schema():
 with app.app_context():
     db.create_all()
     migrate_sqlite_schema()
+
+
+def cleanup_expired_sessions():
+    """
+    1. Past sessions: Any confirmed session whose scheduled time + duration has passed
+       is automatically marked 'completed' and removed from live queue, but preserved in Session History.
+    2. Overdue requests: Any pending/reschedule session that has exceeded RESPONSE_TIME_LIMIT_HOURS
+       or whose scheduled date has arrived without response is marked 'not_responded' and
+       removed from live queues, but preserved in Session History.
+    """
+    now = datetime.now()
+    updated = False
+
+    # 1. Process awaiting sessions (unresponded / timed out requests)
+    awaiting_sessions = Session.query.filter(Session.status.in_(AWAITING_STATUSES)).all()
+    for s in awaiting_sessions:
+        created_time = s.created_at or now
+        time_limit_expired = now >= (created_time + timedelta(hours=RESPONSE_TIME_LIMIT_HOURS))
+        meeting_time_passed = now >= s.scheduled_at
+
+        if time_limit_expired or meeting_time_passed:
+            s.status = STATUS_NOT_RESPONDED
+            s.proposed_at = None
+            s.proposed_by = None
+            updated = True
+            if s.mentorship:
+                add_notification("student", s.mentorship.student_id,
+                                 f"Session '{s.topic}' expired: not responded in time.", s.id)
+                add_notification("mentor", s.mentorship.mentor_id,
+                                 f"Session request '{s.topic}' expired: not responded in time.", s.id)
+
+    # 2. Process confirmed sessions whose meeting time has passed
+    confirmed_sessions = Session.query.filter_by(status=STATUS_CONFIRMED).all()
+    for s in confirmed_sessions:
+        end_time = s.scheduled_at + timedelta(minutes=s.duration_minutes)
+        if now >= end_time:
+            s.status = STATUS_COMPLETED
+            updated = True
+            if s.mentorship:
+                add_notification("student", s.mentorship.student_id,
+                                 f"Session '{s.topic}' completed and archived to history.", s.id)
+
+    if updated:
+        db.session.commit()
+
+
+@app.before_request
+def auto_cleanup_before_request():
+    """Run automated lifecycle cleanup on each dashboard and action request."""
+    if request.endpoint in {"student_page", "mentor_page", "book_session", "confirm_session",
+                            "update_session_priority", "propose_reschedule", "accept_reschedule"}:
+        cleanup_expired_sessions()
 
 
 def admin_required():
@@ -303,7 +381,7 @@ def login_page():
                 error_message = "Name and email do not match. Please try again."
             else:
                 session.clear()
-                session.permanent = True
+                session.permanent = True  # Persist across refreshes
                 session["current_role"] = role
                 session["current_user"] = {
                     "id": user.id,
@@ -443,11 +521,12 @@ def student_page():
         session.clear()
         return redirect(url_for("login_page"))
 
+    cleanup_expired_sessions()
+
     my_mentorships = Mentorship.query.filter_by(student_id=student.id).all()
     mentorship_ids = [m.id for m in my_mentorships]
     connected_mentor_ids = {m.mentor_id for m in my_mentorships}
 
-    # Mentor Search by name, role/expertise, or specialities
     mentor_search = request.args.get("mentor_search", "").strip()
     available_mentors_query = (
         Mentor.query.filter(~Mentor.id.in_(connected_mentor_ids))
@@ -468,23 +547,32 @@ def student_page():
 
     available_mentors = available_mentors_query.order_by(Mentor.full_name).all()
 
-    all_sessions = (
+    # Query all sessions
+    all_sessions_raw = (
         Session.query.filter(Session.mentorship_id.in_(mentorship_ids))
-        .order_by(Session.scheduled_at.desc())
         .all()
         if mentorship_ids
         else []
     )
 
-    confirmed_sessions = [s for s in all_sessions if s.status == STATUS_CONFIRMED]
+    # Priority Queue sort: Urgent (1) -> High (2) -> Medium (3) -> Low (4), then earliest scheduled_at
+    all_sessions = sorted(
+        all_sessions_raw,
+        key=lambda s: (s.priority_rank, s.scheduled_at)
+    )
+
+    # Active upcoming sessions (scheduled time is in the future)
+    now = datetime.now()
+    confirmed_sessions = [s for s in all_sessions if s.status == STATUS_CONFIRMED and s.scheduled_at > now]
     completed_sessions = [s for s in all_sessions if s.status == STATUS_COMPLETED]
     awaiting_sessions = [s for s in all_sessions if s.status in AWAITING_STATUSES]
-    cancelled_sessions = [s for s in all_sessions if s.status in {STATUS_CANCELLED, STATUS_DECLINED}]
+    cancelled_sessions = [s for s in all_sessions if s.status in {STATUS_CANCELLED, STATUS_DECLINED, STATUS_NOT_RESPONDED}]
     action_sessions = [s for s in all_sessions if s.needs_action_from("student")]
 
     total_hours = round(sum(s.duration_minutes for s in completed_sessions) / 60, 1)
-    next_session = min(confirmed_sessions, key=lambda s: s.scheduled_at) if confirmed_sessions else None
+    next_session = confirmed_sessions[0] if confirmed_sessions else None
 
+    # Sessions tab filter
     status_filter = request.args.get("filter", "all")
     if status_filter == "action":
         filtered_sessions = action_sessions
@@ -503,7 +591,7 @@ def student_page():
     if selected_session is None and filtered_sessions:
         selected_session = filtered_sessions[0]
 
-    calendar_weeks, month_label = build_calendar_weeks([s for s in all_sessions if s.is_live])
+    calendar_weeks, month_label = build_calendar_weeks([s for s in all_sessions if s.is_live and s.scheduled_at > now])
 
     all_resources = (
         Resource.query.filter(Resource.mentorship_id.in_(mentorship_ids))
@@ -629,6 +717,10 @@ def book_session(mentorship_id):
         flash("Couldn't book that session — please fill in all required fields.", "error")
         return back_to_dashboard()
 
+    if scheduled_at <= datetime.now():
+        flash("Session time must be in the future.", "error")
+        return back_to_dashboard()
+
     booked_by_student = session["current_role"] == "student"
     new_session = Session(
         mentorship_id=mentorship.id,
@@ -647,15 +739,15 @@ def book_session(mentorship_id):
     if booked_by_student:
         add_notification(
             "mentor", mentorship.mentor_id,
-            f"{actor_name} requested a session: {topic} — {when}. Confirm or propose another time.",
+            f"{actor_name} requested a session: {topic} — {when}. Confirm within 24h.",
             new_session.id,
         )
         add_notification(
             "student", mentorship.student_id,
-            f"Request sent to {mentorship.mentor.full_name} for '{topic}' — {when}. Waiting for confirmation.",
+            f"Request sent to {mentorship.mentor.full_name} for '{topic}' — {when}. Awaiting response.",
             new_session.id,
         )
-        flash(f"Booking request sent to {mentorship.mentor.full_name}.", "success")
+        flash(f"Booking request sent to {mentorship.mentor.full_name} (24h response limit).", "success")
     else:
         add_notification(
             "student", mentorship.student_id,
@@ -670,7 +762,6 @@ def book_session(mentorship_id):
 
 @app.route("/session/<int:session_id>/priority", methods=["POST"])
 def update_session_priority(session_id):
-    """Allows mentors to set/change the priority of a session."""
     if session.get("current_role") != "mentor" or not session.get("current_user"):
         return redirect(url_for("login_page"))
 
@@ -758,8 +849,8 @@ def propose_reschedule(session_id):
         return back_to_dashboard()
 
     new_time = parse_datetime(request.form.get("date", ""), request.form.get("time", ""))
-    if new_time is None:
-        flash("Couldn't propose a new time — please enter a valid date and time.", "error")
+    if new_time is None or new_time <= datetime.now():
+        flash("Couldn't propose a new time — please enter a valid future date and time.", "error")
         return back_to_dashboard()
 
     role = session["current_role"]
@@ -768,23 +859,24 @@ def propose_reschedule(session_id):
 
     session_row.proposed_at = new_time
     session_row.proposed_by = role
+    session_row.created_at = datetime.now()  # Reset 24-hour response timer for counter-offer
 
     if role == "mentor":
         session_row.status = STATUS_RESCHEDULE_BY_MENTOR
         add_notification(
             "student", mentorship.student_id,
-            f"{actor_name} proposed a new time for '{session_row.topic}': {when}. Accept or keep the original.",
+            f"{actor_name} proposed a new time for '{session_row.topic}': {when}. Respond within 24h.",
             session_row.id,
         )
     else:
         session_row.status = STATUS_RESCHEDULE_BY_STUDENT
         add_notification(
             "mentor", mentorship.mentor_id,
-            f"{actor_name} proposed a new time for '{session_row.topic}': {when}. Accept or decline.",
+            f"{actor_name} proposed a new time for '{session_row.topic}': {when}. Respond within 24h.",
             session_row.id,
         )
     db.session.commit()
-    flash(f"Proposed {when} for '{session_row.topic}'. Waiting for a response.", "success")
+    flash(f"Proposed {when} for '{session_row.topic}'. Waiting for response.", "success")
     return back_to_dashboard()
 
 
@@ -1007,20 +1099,28 @@ def mentor_page():
         session.clear()
         return redirect(url_for("login_page"))
 
+    cleanup_expired_sessions()
+
     expertise_tags = [tag.strip() for tag in mentor.expertise.split(",") if tag.strip()]
     my_mentorships = Mentorship.query.filter_by(mentor_id=mentor.id).all()
     mentorship_ids = [m.id for m in my_mentorships]
 
-    all_sessions = (
+    all_sessions_raw = (
         Session.query.filter(Session.mentorship_id.in_(mentorship_ids))
-        .order_by(Session.scheduled_at)
         .all()
         if mentorship_ids
         else []
     )
 
+    # Priority Queue sort: Urgent (1) -> High (2) -> Medium (3) -> Low (4), then earliest scheduled_at
+    all_sessions = sorted(
+        all_sessions_raw,
+        key=lambda s: (s.priority_rank, s.scheduled_at)
+    )
+
+    now = datetime.now()
     pending_requests = [s for s in all_sessions if s.needs_action_from("mentor")]
-    upcoming_sessions = [s for s in all_sessions if s.status == STATUS_CONFIRMED]
+    upcoming_sessions = [s for s in all_sessions if s.status == STATUS_CONFIRMED and s.scheduled_at > now]
 
     notifications = (
         Notification.query.filter_by(recipient_role="mentor", recipient_id=mentor.id)

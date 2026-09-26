@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Dashboard - MentorBridge</title>
+    <title>Student Dashboard - EduConnect</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -26,7 +26,6 @@
     <!-- Sticky Header Navigation Bar -->
     <header class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
         <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-            <!-- Logo -->
             <a href="/Home" class="flex items-center space-x-2">
                 <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white font-bold text-xl shadow-md">
                     <img src="{{ url_for('static', filename='logo.jpg') }}" alt="EduConnect logo" class="w-10 h-10 rounded-xl object-cover">
@@ -44,29 +43,31 @@
                 <a href="/student?tab=resources" class="px-4 py-2 rounded-xl transition {{ 'bg-primary text-white shadow-sm' if active_tab == 'resources' else 'text-slate-500 hover:text-primary hover:bg-lightBg' }}">Resources</a>
             </nav>
 
-            <!-- Actions -->
-            <div class="flex items-center space-x-4">
+            <!-- Actions Header Container with ID -->
+            <div id="header-actions" class="flex items-center space-x-4">
                 <span class="text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1 rounded-full">Student account</span>
-                <a href="/logout" class="text-xs font-semibold text-slate-500 hover:text-primary">Logout</a>
+                <a href="/logout" data-no-async class="text-xs font-semibold text-slate-500 hover:text-primary">Logout</a>
             </div>
         </div>
     </header>
 
-    <main class="max-w-7xl mx-auto px-6 py-10">
-
+    <!-- Flash Messages Container -->
+    <div id="flash-messages" class="max-w-7xl mx-auto px-6 pt-6 space-y-2">
         {% with flashed = get_flashed_messages(with_categories=true) %}
         {% if flashed %}
-        <div class="space-y-2 mb-6">
             {% for category, message in flashed %}
-            <div class="flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold
+            <div class="flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold shadow-xs transition-all duration-300
                 {{ 'bg-red-50 text-red-700 border border-red-200' if category == 'error' else 'bg-emerald-50 text-emerald-700 border border-emerald-200' }}">
                 <span>{{ '⚠️' if category == 'error' else '✅' }}</span>
                 <span>{{ message }}</span>
             </div>
             {% endfor %}
-        </div>
         {% endif %}
         {% endwith %}
+    </div>
+
+    <!-- Main Content Container for Partial Async Swapping -->
+    <main id="main-content" class="max-w-7xl mx-auto px-6 py-8">
 
         <!-- ============================== OVERVIEW TAB ============================== -->
         {% if active_tab == 'overview' %}
@@ -91,7 +92,7 @@
                         {% if unread_count > 0 %}
                         <div class="flex items-center gap-3">
                             <span class="bg-accent text-darkNavy text-xs font-bold px-3 py-1 rounded-full">{{ unread_count }} New</span>
-                            <form action="/notifications/mark-read" method="post">
+                            <form action="/notifications/mark-read" method="post" class="inline">
                                 <input type="hidden" name="return_tab" value="overview">
                                 <button type="submit" class="text-xs font-semibold text-slate-500 hover:text-primary">Mark all read</button>
                             </form>
@@ -113,7 +114,7 @@
                                     {% if n.session_row.status == 'reschedule_by_mentor' %}
                                     <form action="/session/{{ n.session_row.id }}/accept-proposal" method="post">
                                         <input type="hidden" name="return_tab" value="overview">
-                                        <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg">Accept new time</button>
+                                        <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg shadow-xs">Accept new time</button>
                                     </form>
                                     <form action="/session/{{ n.session_row.id }}/reject-proposal" method="post">
                                         <input type="hidden" name="return_tab" value="overview">
@@ -142,7 +143,7 @@
                     <div class="grid grid-cols-3 gap-4 mb-6">
                         <div class="bg-lightBg rounded-2xl border border-slate-200 p-4 text-center">
                             <h3 class="text-2xl font-bold text-primary">{{ confirmed_count }}</h3>
-                            <p class="text-xs text-slate-500 mt-1">Confirmed</p>
+                            <p class="text-xs text-slate-500 mt-1">Confirmed (Upcoming)</p>
                         </div>
                         <div class="bg-lightBg rounded-2xl border border-slate-200 p-4 text-center">
                             <h3 class="text-2xl font-bold {{ 'text-accent' if action_count > 0 else 'text-primary' }}">{{ action_count }}</h3>
@@ -162,15 +163,15 @@
                     </div>
 
                     {% if next_session %}
-                    <div class="mt-6 pt-6 border-t border-slate-100 flex items-center justify-between">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs text-slate-500">Next session: <strong class="text-primary">{{ next_session.topic }}</strong> with {{ next_session.mentorship.mentor.full_name }} on {{ next_session.scheduled_at.strftime('%d %b, %I:%M %p') }}</span>
+                    <div class="mt-6 pt-6 border-t border-slate-100 flex items-center justify-between flex-wrap gap-3">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-xs text-slate-500">Highest Priority Session: <strong class="text-primary">{{ next_session.topic }}</strong> with {{ next_session.mentorship.mentor.full_name }} on {{ next_session.scheduled_at.strftime('%d %b, %I:%M %p') }}</span>
                             <span class="text-[10px] font-bold px-2 py-0.5 rounded-md
                                 {{ 'bg-red-100 text-red-700' if next_session.priority == 'urgent'
                                    else 'bg-amber-100 text-amber-700' if next_session.priority == 'high'
                                    else 'bg-blue-100 text-blue-700' if next_session.priority == 'medium'
                                    else 'bg-slate-200 text-slate-700' }}">
-                                {{ next_session.priority|capitalize }} Priority
+                                {{ '🔥 Urgent' if next_session.priority == 'urgent' else '⚡ High' if next_session.priority == 'high' else '🎯 Medium' if next_session.priority == 'medium' else '☕ Low' }}
                             </span>
                         </div>
                         <a href="/student?tab=sessions" class="bg-slate-100 hover:bg-slate-200 text-primary text-xs font-bold px-5 py-2.5 rounded-xl transition">View</a>
@@ -299,21 +300,21 @@
 
         </div>
 
-        <!-- ============================== SESSIONS TAB ============================== -->
+        <!-- ============================== SESSIONS TAB (Priority Queue Ordered) ============================== -->
         {% elif active_tab == 'sessions' %}
 
         <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
                 <h1 class="text-2xl font-bold text-primary">My Sessions 📅</h1>
-                <p class="text-slate-500 text-sm mt-1">Book sessions and track confirmations from your mentors.</p>
+                <p class="text-slate-500 text-sm mt-1">Priority Queue active. Expired requests (past 24h) and completed past sessions automatically archive to Session History.</p>
             </div>
 
             {% if my_mentorships %}
             <details class="relative">
-                <summary class="list-none cursor-pointer bg-primary hover:bg-slate-800 text-white text-xs font-bold px-5 py-3 rounded-xl transition">+ Book New Session</summary>
-                <div class="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl p-5 z-10">
+                <summary class="list-none cursor-pointer bg-primary hover:bg-slate-800 text-white text-xs font-bold px-5 py-3 rounded-xl transition shadow-xs">+ Book New Session</summary>
+                <div class="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl p-5 z-20">
                     <h3 class="text-sm font-bold text-primary mb-3">Book a session</h3>
-                    <p class="text-[11px] text-slate-500 mb-3">Your mentor will confirm the time before it's finalized.</p>
+                    <p class="text-[11px] text-slate-500 mb-3">Your mentor will confirm the time within 24h before it expires.</p>
                     <form method="post" class="space-y-3" id="book-session-form" action="">
                         <select name="mentor_select" required onchange="document.getElementById('book-session-form').action = '/session/book/' + this.value" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2">
                             <option value="">Choose a mentor...</option>
@@ -328,11 +329,20 @@
                             <input type="time" name="time" required class="flex-1 text-sm border border-slate-300 rounded-xl px-3 py-2">
                         </div>
                         <div class="flex gap-2">
-                            <input type="number" name="duration" value="60" min="15" step="15" class="w-24 text-sm border border-slate-300 rounded-xl px-3 py-2">
+                            <input type="number" name="duration" value="60" min="15" step="15" class="w-20 text-sm border border-slate-300 rounded-xl px-3 py-2">
                             <select name="mode" class="flex-1 text-sm border border-slate-300 rounded-xl px-3 py-2">
                                 <option>Google Meet</option>
                                 <option>Zoom</option>
                                 <option>In-person</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-slate-500 font-semibold">Priority:</span>
+                            <select name="priority" class="flex-1 text-xs border border-slate-300 rounded-xl px-3 py-2 font-bold">
+                                <option value="urgent">🔥 Urgent</option>
+                                <option value="high">⚡ High</option>
+                                <option value="medium" selected>🎯 Medium</option>
+                                <option value="low">☕ Low</option>
                             </select>
                         </div>
                         <button type="submit" class="w-full bg-accent hover:bg-amber-400 text-darkNavy text-sm font-bold px-4 py-2.5 rounded-xl transition">Request booking</button>
@@ -345,17 +355,17 @@
         <!-- Top Grid -->
         <div class="grid lg:grid-cols-3 gap-6 mb-8">
 
-            <!-- Next confirmed session -->
+            <!-- Next confirmed session (Highest Priority) -->
             <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="font-bold text-primary">Next Session</h3>
+                    <h3 class="font-bold text-primary">Top Priority Session</h3>
                     {% if next_session %}
                     <span class="text-xs font-bold px-3 py-1 rounded-full
                         {{ 'bg-red-100 text-red-700' if next_session.priority == 'urgent'
                            else 'bg-amber-100 text-amber-700' if next_session.priority == 'high'
                            else 'bg-blue-100 text-blue-700' if next_session.priority == 'medium'
                            else 'bg-slate-200 text-slate-700' }}">
-                        {{ next_session.priority|capitalize }} Priority
+                        {{ '🔥 Urgent' if next_session.priority == 'urgent' else '⚡ High' if next_session.priority == 'high' else '🎯 Medium' if next_session.priority == 'medium' else '☕ Low' }}
                     </span>
                     {% endif %}
                 </div>
@@ -373,7 +383,7 @@
                     <button type="submit" class="text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2 rounded-xl transition">Cancel</button>
                 </form>
                 {% else %}
-                <p class="text-sm text-slate-500">No confirmed sessions yet. Book one above to get started.</p>
+                <p class="text-sm text-slate-500">No active confirmed sessions scheduled. Past sessions are archived below.</p>
                 {% endif %}
             </div>
 
@@ -407,19 +417,19 @@
                 <div class="grid grid-cols-2 gap-3 mb-4">
                     <div class="bg-lightBg rounded-xl p-3 text-center">
                         <h4 class="text-xl font-bold text-primary">{{ total_count }}</h4>
-                        <p class="text-[11px] text-slate-500">Total</p>
+                        <p class="text-[11px] text-slate-500">Total in History</p>
                     </div>
                     <div class="bg-lightBg rounded-xl p-3 text-center">
                         <h4 class="text-xl font-bold text-emerald-600">{{ confirmed_count }}</h4>
-                        <p class="text-[11px] text-slate-500">Confirmed</p>
+                        <p class="text-[11px] text-slate-500">Upcoming Live</p>
                     </div>
                     <div class="bg-lightBg rounded-xl p-3 text-center">
                         <h4 class="text-xl font-bold text-amber-600">{{ awaiting_count }}</h4>
                         <p class="text-[11px] text-slate-500">Awaiting</p>
                     </div>
                     <div class="bg-lightBg rounded-xl p-3 text-center">
-                        <h4 class="text-xl font-bold text-red-600">{{ cancelled_count }}</h4>
-                        <p class="text-[11px] text-slate-500">Cancelled</p>
+                        <h4 class="text-xl font-bold text-slate-600">{{ completed_count }}</h4>
+                        <p class="text-[11px] text-slate-500">Completed</p>
                     </div>
                 </div>
             </div>
@@ -428,25 +438,28 @@
         <!-- Bottom Grid -->
         <div class="grid lg:grid-cols-2 gap-8">
 
-            <!-- Session History -->
+            <!-- Session History (Priority Queue Sorted) -->
             <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                <h3 class="font-bold text-primary mb-4">Session History</h3>
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-primary">Session History &amp; Queue</h3>
+                    <span class="text-[11px] text-slate-400 font-semibold">Priority Queue Sorted</span>
+                </div>
                 <div class="flex gap-2 mb-4 flex-wrap">
                     <a href="/student?tab=sessions&filter=all" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'all' else 'bg-lightBg text-slate-600' }}">All</a>
                     <a href="/student?tab=sessions&filter=action" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'action' else 'bg-lightBg text-slate-600' }}">Needs action{% if action_count > 0 %} ({{ action_count }}){% endif %}</a>
-                    <a href="/student?tab=sessions&filter=confirmed" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'confirmed' else 'bg-lightBg text-slate-600' }}">Confirmed</a>
+                    <a href="/student?tab=sessions&filter=confirmed" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'confirmed' else 'bg-lightBg text-slate-600' }}">Upcoming Live</a>
                     <a href="/student?tab=sessions&filter=completed" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'completed' else 'bg-lightBg text-slate-600' }}">Completed</a>
-                    <a href="/student?tab=sessions&filter=cancelled" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'cancelled' else 'bg-lightBg text-slate-600' }}">Cancelled</a>
+                    <a href="/student?tab=sessions&filter=cancelled" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'cancelled' else 'bg-lightBg text-slate-600' }}">Cancelled/Expired</a>
                 </div>
 
                 {% if sessions %}
                 <div class="space-y-3">
                     {% for s in sessions %}
                     <a href="/student?tab=sessions&filter={{ status_filter }}&session_id={{ s.id }}"
-                       class="block p-4 rounded-2xl border {{ 'border-secondary bg-emerald-50/40' if selected_session and selected_session.id == s.id else 'border-slate-200 bg-lightBg' }}">
+                       class="block p-4 rounded-2xl border transition-all {{ 'border-secondary bg-emerald-50/40 ring-2 ring-secondary/20' if selected_session and selected_session.id == s.id else 'border-slate-200 bg-lightBg hover:border-slate-300' }}">
                         <div class="flex items-center justify-between gap-2">
                             <div>
-                                <div class="flex items-center gap-2">
+                                <div class="flex items-center gap-2 flex-wrap">
                                     <h4 class="font-semibold text-primary text-sm">{{ s.topic }}</h4>
                                     <!-- Priority Badge -->
                                     <span class="text-[10px] font-bold px-2 py-0.5 rounded-md
@@ -454,16 +467,17 @@
                                            else 'bg-amber-100 text-amber-700' if s.priority == 'high'
                                            else 'bg-blue-100 text-blue-700' if s.priority == 'medium'
                                            else 'bg-slate-200 text-slate-700' }}">
-                                        {{ s.priority|capitalize }}
+                                        {{ '🔥 Urgent' if s.priority == 'urgent' else '⚡ High' if s.priority == 'high' else '🎯 Medium' if s.priority == 'medium' else '☕ Low' }}
                                     </span>
                                 </div>
-                                <p class="text-xs text-slate-500">Mentor {{ s.mentorship.mentor.full_name }}</p>
+                                <p class="text-xs text-slate-500 mt-0.5">Mentor {{ s.mentorship.mentor.full_name }}</p>
                                 <p class="text-[11px] text-slate-400">📅 {{ s.scheduled_at.strftime('%a, %d %b') }} &bull; 🕒 {{ s.scheduled_at.strftime('%I:%M %p') }}</p>
                                 {% if s.proposed_at %}<p class="text-[11px] text-blue-600 mt-0.5">↻ Proposed: {{ s.proposed_at.strftime('%a, %d %b %I:%M %p') }}</p>{% endif %}
                             </div>
                             <span class="text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap
                                 {{ 'bg-emerald-100 text-emerald-700' if s.status == 'confirmed'
-                                   else 'bg-slate-100 text-slate-600' if s.status == 'completed'
+                                   else 'bg-slate-200 text-slate-700' if s.status == 'completed'
+                                   else 'bg-amber-100 text-amber-800' if s.status == 'not_responded'
                                    else 'bg-red-100 text-red-700' if s.status in ('cancelled', 'declined')
                                    else 'bg-blue-100 text-blue-700' if s.status in ('reschedule_by_mentor', 'reschedule_by_student')
                                    else 'bg-amber-100 text-amber-700' }}">
@@ -485,21 +499,22 @@
                 {% set s = selected_session %}
                 <div class="flex items-start justify-between mb-4">
                     <div>
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 flex-wrap">
                             <h4 class="font-bold text-primary">{{ s.topic }}</h4>
                             <span class="text-[10px] font-bold px-2 py-0.5 rounded-md
                                 {{ 'bg-red-100 text-red-700' if s.priority == 'urgent'
                                    else 'bg-amber-100 text-amber-700' if s.priority == 'high'
                                    else 'bg-blue-100 text-blue-700' if s.priority == 'medium'
                                    else 'bg-slate-200 text-slate-700' }}">
-                                {{ s.priority|capitalize }} Priority
+                                {{ '🔥 Urgent Priority' if s.priority == 'urgent' else '⚡ High Priority' if s.priority == 'high' else '🎯 Medium Priority' if s.priority == 'medium' else '☕ Low Priority' }}
                             </span>
                         </div>
                         <p class="text-sm text-slate-500">Mentor: {{ s.mentorship.mentor.full_name }}</p>
                     </div>
                     <span class="text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap
                         {{ 'bg-emerald-100 text-emerald-700' if s.status == 'confirmed'
-                           else 'bg-slate-100 text-slate-600' if s.status == 'completed'
+                           else 'bg-slate-200 text-slate-700' if s.status == 'completed'
+                           else 'bg-amber-100 text-amber-800' if s.status == 'not_responded'
                            else 'bg-red-100 text-red-700' if s.status in ('cancelled', 'declined')
                            else 'bg-blue-100 text-blue-700' if s.status in ('reschedule_by_mentor', 'reschedule_by_student')
                            else 'bg-amber-100 text-amber-700' }}">
@@ -531,7 +546,7 @@
                     <div class="flex flex-wrap gap-2">
                         <form action="/session/{{ s.id }}/accept-proposal" method="post">
                             <input type="hidden" name="return_tab" value="sessions">
-                            <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-4 py-2 rounded-xl">Accept new time</button>
+                            <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-4 py-2 rounded-xl shadow-xs">Accept new time</button>
                         </form>
                         <form action="/session/{{ s.id }}/reject-proposal" method="post">
                             <input type="hidden" name="return_tab" value="sessions">
@@ -540,14 +555,14 @@
                     </div>
 
                     {% elif s.status == 'reschedule_by_student' %}
-                    <p class="text-xs text-slate-600">Waiting for your mentor to respond to your proposed time.</p>
+                    <p class="text-xs text-slate-600">Waiting for your mentor to respond to your proposed time (within 24h).</p>
                     <form action="/session/{{ s.id }}/cancel" method="post">
                         <input type="hidden" name="return_tab" value="sessions">
                         <button type="submit" class="text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2 rounded-xl transition">Cancel session</button>
                     </form>
 
                     {% elif s.status == 'pending_mentor' %}
-                    <p class="text-xs text-slate-600">Waiting for {{ s.mentorship.mentor.full_name }} to confirm.</p>
+                    <p class="text-xs text-slate-600">Waiting for {{ s.mentorship.mentor.full_name }} to confirm (24h time limit).</p>
                     <form action="/session/{{ s.id }}/propose" method="post" class="flex flex-wrap gap-2">
                         <input type="hidden" name="return_tab" value="sessions">
                         <input type="date" name="date" required class="text-xs border border-slate-300 rounded-xl px-2 py-2">
@@ -570,6 +585,11 @@
                         <input type="hidden" name="return_tab" value="sessions">
                         <button type="submit" class="text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2 rounded-xl transition">Cancel session</button>
                     </form>
+
+                    {% elif s.status == 'not_responded' %}
+                    <p class="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">
+                        This session booking expired because it was not responded to within the 24-hour limit. You can book a fresh slot above.
+                    </p>
 
                     {% elif s.status == 'declined' %}
                     <p class="text-xs text-slate-600">Your mentor couldn't take this slot. Book a new one from the button above.</p>
@@ -640,6 +660,78 @@
 
         {% endif %}
     </main>
+
+    <!-- Async Form Interceptor: Updates sections seamlessly without full page reload -->
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('submit', async (e) => {
+            const form = e.target;
+            if (!form || form.method.toUpperCase() !== 'POST') return;
+            if (form.hasAttribute('data-no-async')) return;
+
+            e.preventDefault();
+
+            const submitBtn = form.querySelector('button[type="submit"]');
+            const originalText = submitBtn ? submitBtn.innerHTML : '';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.classList.add('opacity-70', 'cursor-wait');
+            }
+
+            try {
+                const formData = new FormData(form);
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+
+                if (response.ok) {
+                    const htmlText = await response.text();
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlText, 'text/html');
+
+                    // Swap main content seamlessly without page reload
+                    const newMain = doc.getElementById('main-content');
+                    const curMain = document.getElementById('main-content');
+                    if (newMain && curMain) {
+                        curMain.innerHTML = newMain.innerHTML;
+                    }
+
+                    // Swap header actions & counters
+                    const newHeader = doc.getElementById('header-actions');
+                    const curHeader = document.getElementById('header-actions');
+                    if (newHeader && curHeader) {
+                        curHeader.innerHTML = newHeader.innerHTML;
+                    }
+
+                    // Swap flash messages
+                    const newFlash = doc.getElementById('flash-messages');
+                    const curFlash = document.getElementById('flash-messages');
+                    if (newFlash && curFlash) {
+                        curFlash.innerHTML = newFlash.innerHTML;
+                        setTimeout(() => {
+                            const alert = curFlash.querySelector('div');
+                            if (alert) alert.style.transition = 'opacity 0.5s ease';
+                            if (alert) alert.style.opacity = '0';
+                        }, 4000);
+                    }
+                } else {
+                    form.submit();
+                }
+            } catch (err) {
+                console.error('Async update failed, falling back to standard submit:', err);
+                form.submit();
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('opacity-70', 'cursor-wait');
+                    submitBtn.innerHTML = originalText;
+                }
+            }
+        });
+    });
+    </script>
 
 </body>
 </html>

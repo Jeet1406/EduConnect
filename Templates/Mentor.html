@@ -36,135 +36,319 @@
                 <span class="text-2xl font-extrabold tracking-tight text-primary">EduConnect</span>
             </a>
 
-            <div class="flex items-center space-x-4">
+            <!-- Header Actions with ID for partial updates -->
+            <div id="header-actions" class="flex items-center space-x-4">
                 {% if pending_count and pending_count > 0 %}
-                <a href="#requests" class="text-xs font-bold bg-accent text-darkNavy px-3 py-1.5 rounded-full">📋 {{ pending_count }} Request{{ 's' if pending_count != 1 else '' }}</a>
+                <a href="#requests" class="text-xs font-bold bg-accent text-darkNavy px-3 py-1.5 rounded-full transition-transform hover:scale-105">📋 {{ pending_count }} Request{{ 's' if pending_count != 1 else '' }}</a>
                 {% endif %}
                 {% if unread_count and unread_count > 0 %}
-                <form action="/notifications/mark-read" method="post">
-                    <button type="submit" class="text-xs font-bold bg-white border border-slate-200 text-primary px-3 py-1.5 rounded-full">🔔 {{ unread_count }} New</button>
+                <form action="/notifications/mark-read" method="post" class="inline">
+                    <button type="submit" class="text-xs font-bold bg-white border border-slate-200 text-primary px-3 py-1.5 rounded-full hover:bg-slate-50">🔔 {{ unread_count }} New</button>
                 </form>
                 {% endif %}
                 <span class="hidden sm:inline-flex items-center bg-blue-50 text-primary text-xs font-bold px-3 py-1.5 rounded-full">Mentor account</span>
                 {% if current_user %}
-                <a href="/logout" class="text-sm font-bold bg-primary hover:bg-slate-800 text-white px-6 py-3 rounded-2xl shadow-md transition-all">Logout</a>
+                <a href="/logout" data-no-async class="text-sm font-bold bg-primary hover:bg-slate-800 text-white px-6 py-3 rounded-2xl shadow-md transition-all">Logout</a>
                 {% else %}
-                <a href="/login" class="text-sm font-bold bg-accent hover:bg-amber-400 text-darkNavy px-6 py-3 rounded-2xl shadow-md shadow-amber-400/20 transition-all">Login</a>
+                <a href="/login" data-no-async class="text-sm font-bold bg-accent hover:bg-amber-400 text-darkNavy px-6 py-3 rounded-2xl shadow-md shadow-amber-400/20 transition-all">Login</a>
                 {% endif %}
             </div>
         </div>
     </header>
 
-    {% with flashed = get_flashed_messages(with_categories=true) %}
-    {% if flashed %}
-    <div class="max-w-7xl mx-auto px-6 pt-6 space-y-2">
-        {% for category, message in flashed %}
-        <div class="flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold
-            {{ 'bg-red-50 text-red-700 border border-red-200' if category == 'error' else 'bg-emerald-50 text-emerald-700 border border-emerald-200' }}">
-            <span>{{ '⚠️' if category == 'error' else '✅' }}</span>
-            <span>{{ message }}</span>
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
-    {% endwith %}
-
-    <!-- Welcome / Hero -->
-    <section class="relative pt-16 pb-12 lg:pt-20 lg:pb-16 overflow-hidden">
-        <div class="max-w-5xl mx-auto px-6 text-center">
-            <div class="inline-flex items-center space-x-2 bg-white border border-slate-200 shadow-xs px-4 py-1.5 rounded-full mb-6">
-                <span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
-                <span class="text-xs font-bold text-slate-700">Mentor Dashboard</span>
+    <!-- Flash Messages Container -->
+    <div id="flash-messages" class="max-w-7xl mx-auto px-6 pt-4 space-y-2">
+        {% with flashed = get_flashed_messages(with_categories=true) %}
+        {% if flashed %}
+            {% for category, message in flashed %}
+            <div class="flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold shadow-xs transition-all duration-300
+                {{ 'bg-red-50 text-red-700 border border-red-200' if category == 'error' else 'bg-emerald-50 text-emerald-700 border border-emerald-200' }}">
+                <span>{{ '⚠️' if category == 'error' else '✅' }}</span>
+                <span>{{ message }}</span>
             </div>
-            <h1 class="text-3xl sm:text-5xl font-black text-primary tracking-tight leading-[1.1] mb-4">
-                Welcome back, <span class="bg-gradient-to-r from-secondary to-emerald-600 bg-clip-text text-transparent">{{ mentor.full_name }}</span>
-            </h1>
-            <p class="text-slate-600 max-w-xl mx-auto font-medium">
-                Manage your mentees, respond to session requests, and set session priorities.
-            </p>
-        </div>
-    </section>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+    </div>
 
-    <!-- Profile Card Section -->
-    <section class="pb-16 max-w-7xl mx-auto px-6">
-        <div class="grid lg:grid-cols-3 gap-8">
-            <div class="lg:col-span-2">
-                <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-8">
-                    <div class="flex items-start space-x-5 mb-6">
-                        <div class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-primary via-slate-800 to-secondary flex items-center justify-center text-white font-black text-2xl shadow-lg shadow-blue-900/10 flex-shrink-0">
-                            {{ mentor.full_name[:1] }}{{ mentor.full_name.split(' ')[1][:1] if mentor.full_name.split(' ')|length > 1 else '' }}
+    <!-- Main Content Container (Refreshes asynchronously without full page reload) -->
+    <main id="main-content">
+        <!-- Welcome / Hero -->
+        <section class="relative pt-12 pb-10 lg:pt-14 lg:pb-12 overflow-hidden">
+            <div class="max-w-5xl mx-auto px-6 text-center">
+                <div class="inline-flex items-center space-x-2 bg-white border border-slate-200 shadow-xs px-4 py-1.5 rounded-full mb-6">
+                    <span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+                    <span class="text-xs font-bold text-slate-700">Mentor Dashboard</span>
+                </div>
+                <h1 class="text-3xl sm:text-5xl font-black text-primary tracking-tight leading-[1.1] mb-4">
+                    Welcome back, <span class="bg-gradient-to-r from-secondary to-emerald-600 bg-clip-text text-transparent">{{ mentor.full_name }}</span>
+                </h1>
+                <p class="text-slate-600 max-w-xl mx-auto font-medium text-sm">
+                    Priority Queue active: Urgent sessions move to the top automatically. Overdue requests expire after 24h into Session History.
+                </p>
+            </div>
+        </section>
+
+        <!-- Profile Card Section -->
+        <section class="pb-10 max-w-7xl mx-auto px-6">
+            <div class="grid lg:grid-cols-3 gap-8">
+                <div class="lg:col-span-2">
+                    <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-8">
+                        <div class="flex items-start space-x-5 mb-6">
+                            <div class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-primary via-slate-800 to-secondary flex items-center justify-center text-white font-black text-2xl shadow-lg shadow-blue-900/10 flex-shrink-0">
+                                {{ mentor.full_name[:1] }}{{ mentor.full_name.split(' ')[1][:1] if mentor.full_name.split(' ')|length > 1 else '' }}
+                            </div>
+                            <div>
+                                <h2 class="font-extrabold text-primary text-2xl">{{ mentor.full_name }}</h2>
+                                <p class="text-sm text-slate-500 font-medium mt-1">{{ mentor.email }}</p>
+                                <span class="inline-flex items-center mt-2 bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">
+                                    ✨ Registered mentor
+                                </span>
+                            </div>
                         </div>
-                        <div>
-                            <h2 class="font-extrabold text-primary text-2xl">{{ mentor.full_name }}</h2>
-                            <p class="text-sm text-slate-500 font-medium mt-1">{{ mentor.email }}</p>
-                            <span class="inline-flex items-center mt-2 bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">
-                                ✨ Registered mentor
+
+                        {% if mentor.description %}
+                        <div class="pt-6 border-t border-slate-200">
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">About &amp; Specialities</span>
+                            <p class="text-sm text-slate-700 leading-relaxed font-normal bg-lightBg p-4 rounded-2xl border border-slate-200/80">
+                                {{ mentor.description }}
+                            </p>
+                        </div>
+                        {% endif %}
+
+                        <div class="pt-6 mt-6 border-t border-slate-200">
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-3">Areas of expertise</span>
+                            <div class="flex flex-wrap gap-2">
+                                {% for tag in expertise_tags %}
+                                <span class="bg-lightBg border border-slate-200/80 text-slate-700 text-sm font-semibold px-3 py-1.5 rounded-xl">{{ tag }}</span>
+                                {% else %}
+                                <span class="text-sm text-slate-500">No expertise on file yet.</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="pt-6 mt-6 border-t border-slate-200 flex items-center justify-between">
+                            <div>
+                                <span class="text-xs font-bold uppercase tracking-wider text-slate-400 block">Mentoring format</span>
+                                <span class="font-black text-primary text-lg">{{ mentor.mentoring_format }}</span>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-xs font-bold uppercase tracking-wider text-slate-400 block">Mentor ID</span>
+                                <span class="font-black text-primary text-lg">#{{ mentor.id }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Side Info Panel -->
+                <div class="space-y-6">
+                    <div class="rounded-3xl border border-slate-200/80 bg-lightBg p-8">
+                        <h3 class="text-sm font-bold text-primary mb-2">⚡ Automated Rules</h3>
+                        <ul class="text-xs text-slate-600 space-y-2 leading-relaxed">
+                            <li>• <strong>Priority Queue:</strong> Changing priority instantly shifts urgent sessions to the top.</li>
+                            <li>• <strong>24h Response Window:</strong> Unanswered booking requests automatically expire into Session History.</li>
+                            <li>• <strong>Auto-Archive:</strong> Once a session's meeting time passes, it moves automatically to Session History.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Session Requests Section (Priority Queue Sorted) -->
+        <section id="requests" class="pb-8 max-w-7xl mx-auto px-6">
+            <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-8">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-lg font-bold text-primary">Session requests</h2>
+                        <span class="text-[11px] font-semibold text-slate-400">(Priority Queue Sorted)</span>
+                    </div>
+                    {% if pending_count and pending_count > 0 %}
+                    <span class="text-xs font-bold bg-accent text-darkNavy px-3 py-1 rounded-full">{{ pending_count }} waiting on you</span>
+                    {% endif %}
+                </div>
+
+                {% if pending_requests %}
+                <div class="space-y-3">
+                    {% for s in pending_requests %}
+                    <div class="p-4 bg-lightBg rounded-2xl border transition-all duration-300 {{ 'border-red-300 bg-red-50/20' if s.priority == 'urgent' else 'border-slate-200' }}">
+                        <div class="flex items-start justify-between gap-3 mb-2">
+                            <div>
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <h4 class="font-semibold text-primary text-sm">{{ s.topic }}</h4>
+                                    <!-- Priority Badge -->
+                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-md
+                                        {{ 'bg-red-100 text-red-700' if s.priority == 'urgent'
+                                           else 'bg-amber-100 text-amber-700' if s.priority == 'high'
+                                           else 'bg-blue-100 text-blue-700' if s.priority == 'medium'
+                                           else 'bg-slate-200 text-slate-700' }}">
+                                        {{ '🔥 Urgent Priority' if s.priority == 'urgent'
+                                           else '⚡ High Priority' if s.priority == 'high'
+                                           else '🎯 Medium Priority' if s.priority == 'medium'
+                                           else '☕ Low Priority' }}
+                                    </span>
+                                </div>
+                                <p class="text-xs text-slate-500 mt-0.5">{{ s.mentorship.student.full_name }}</p>
+                            </div>
+                            <span class="text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap
+                                {{ 'bg-amber-100 text-amber-700' if s.status == 'pending_mentor' else 'bg-blue-100 text-blue-700' }}">
+                                {{ s.status_label }}
                             </span>
                         </div>
-                    </div>
 
-                    <!-- Mentor Description / Specialities -->
-                    {% if mentor.description %}
-                    <div class="pt-6 border-t border-slate-200">
-                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">About &amp; Specialities</span>
-                        <p class="text-sm text-slate-700 leading-relaxed font-normal bg-lightBg p-4 rounded-2xl border border-slate-200/80">
-                            {{ mentor.description }}
-                        </p>
+                        {% if s.status == 'reschedule_by_student' %}
+                        <p class="text-xs text-slate-600 mb-1">Original: {{ s.scheduled_at.strftime('%a %d %b, %I:%M %p') }} &bull; Proposed: <strong>{{ s.proposed_at.strftime('%a %d %b, %I:%M %p') }}</strong></p>
+                        {% else %}
+                        <p class="text-xs text-slate-600 mb-1">📅 {{ s.scheduled_at.strftime('%a %d %b, %I:%M %p') }} &bull; 📹 {{ s.mode }} &bull; {{ s.duration_minutes }} min</p>
+                        {% endif %}
+
+                        <!-- Priority Selector & Actions -->
+                        <div class="flex flex-wrap items-center gap-2 mt-3 pt-2 border-t border-slate-200/70">
+                            <!-- Instant Priority Form -->
+                            <form action="/session/{{ s.id }}/priority" method="post" class="flex items-center gap-1.5">
+                                <span class="text-xs text-slate-500 font-semibold">Priority:</span>
+                                <select name="priority" class="priority-select text-xs font-bold border border-slate-300 rounded-lg px-2 py-1 bg-white cursor-pointer hover:border-secondary">
+                                    <option value="urgent" {{ 'selected' if s.priority == 'urgent' }}>🔥 Urgent</option>
+                                    <option value="high" {{ 'selected' if s.priority == 'high' }}>⚡ High</option>
+                                    <option value="medium" {{ 'selected' if s.priority == 'medium' }}>🎯 Medium</option>
+                                    <option value="low" {{ 'selected' if s.priority == 'low' }}>☕ Low</option>
+                                </select>
+                            </form>
+
+                            <div class="flex items-center gap-2 ml-auto">
+                                {% if s.status == 'pending_mentor' %}
+                                <form action="/session/{{ s.id }}/confirm" method="post">
+                                    <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg shadow-xs">Confirm</button>
+                                </form>
+                                {% elif s.status == 'reschedule_by_student' %}
+                                <form action="/session/{{ s.id }}/accept-proposal" method="post">
+                                    <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg shadow-xs">Accept new time</button>
+                                </form>
+                                {% endif %}
+
+                                <details class="inline-block relative">
+                                    <summary class="list-none cursor-pointer text-xs font-bold bg-white border border-slate-300 hover:border-slate-400 text-primary px-3 py-1.5 rounded-lg">Propose time</summary>
+                                    <form action="/session/{{ s.id }}/propose" method="post" class="absolute right-0 mt-2 z-20 flex flex-wrap gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-xl w-64">
+                                        <input type="date" name="date" required class="text-xs border border-slate-300 rounded-lg px-2 py-1.5 w-full">
+                                        <input type="time" name="time" required class="text-xs border border-slate-300 rounded-lg px-2 py-1.5 w-full">
+                                        <button type="submit" class="text-xs font-bold bg-primary hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg w-full">Send Proposal</button>
+                                    </form>
+                                </details>
+
+                                <details class="inline-block relative">
+                                    <summary class="list-none cursor-pointer text-xs font-bold text-red-600 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg">Decline</summary>
+                                    <form action="/session/{{ s.id }}/decline" method="post" class="absolute right-0 mt-2 z-20 flex flex-col gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-xl w-64">
+                                        <input type="text" name="reason" placeholder="Reason (optional)" class="text-xs border border-slate-300 rounded-lg px-2 py-1.5">
+                                        <button type="submit" class="text-xs font-bold bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg">Confirm decline</button>
+                                    </form>
+                                </details>
+                            </div>
+                        </div>
                     </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-sm text-slate-500">Nothing waiting on you right now.</p>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Notifications & Upcoming Sessions -->
+        <section class="pb-8 max-w-7xl mx-auto px-6">
+            <div class="grid lg:grid-cols-2 gap-8">
+                <!-- Notifications -->
+                <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-8">
+                    <h2 class="text-lg font-bold text-primary mb-4">Notifications</h2>
+                    {% if notifications %}
+                    <ul class="space-y-3">
+                        {% for n in notifications %}
+                        <li class="flex items-start gap-3">
+                            {% if not n.is_read %}<span class="mt-1.5 w-2 h-2 rounded-full bg-secondary flex-shrink-0"></span>{% else %}<span class="mt-1.5 w-2 h-2 flex-shrink-0"></span>{% endif %}
+                            <div>
+                                <p class="text-sm text-slate-700">{{ n.message }}</p>
+                                <span class="text-xs text-slate-400">{{ n.created_at.strftime('%d %b, %I:%M %p') }}</span>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-sm text-slate-500">No notifications yet.</p>
                     {% endif %}
+                </div>
 
-                    <div class="pt-6 mt-6 border-t border-slate-200">
-                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-3">Areas of expertise</span>
-                        <div class="flex flex-wrap gap-2">
-                            {% for tag in expertise_tags %}
-                            <span class="bg-lightBg border border-slate-200/80 text-slate-700 text-sm font-semibold px-3 py-1.5 rounded-xl">{{ tag }}</span>
-                            {% else %}
-                            <span class="text-sm text-slate-500">No expertise on file yet.</span>
-                            {% endfor %}
-                        </div>
+                <!-- Upcoming Sessions (Future & Active only) -->
+                <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-8">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-bold text-primary">Active Upcoming Sessions</h2>
+                        <span class="text-[11px] font-semibold text-slate-400">Queue Order</span>
                     </div>
 
-                    <div class="pt-6 mt-6 border-t border-slate-200 flex items-center justify-between">
-                        <div>
-                            <span class="text-xs font-bold uppercase tracking-wider text-slate-400 block">Mentoring format</span>
-                            <span class="font-black text-primary text-lg">{{ mentor.mentoring_format }}</span>
-                        </div>
-                        <div class="text-right">
-                            <span class="text-xs font-bold uppercase tracking-wider text-slate-400 block">Mentor ID</span>
-                            <span class="font-black text-primary text-lg">#{{ mentor.id }}</span>
-                        </div>
-                    </div>
+                    {% if upcoming_sessions %}
+                    <ul class="space-y-3">
+                        {% for s in upcoming_sessions %}
+                        <li class="p-4 bg-lightBg rounded-2xl border transition-all duration-300 {{ 'border-red-300 bg-red-50/20' if s.priority == 'urgent' else 'border-slate-200' }}">
+                            <div class="flex items-start justify-between gap-2 mb-1">
+                                <div>
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <p class="text-sm font-semibold text-primary">{{ s.topic }}</p>
+                                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-md
+                                            {{ 'bg-red-100 text-red-700' if s.priority == 'urgent'
+                                               else 'bg-amber-100 text-amber-700' if s.priority == 'high'
+                                               else 'bg-blue-100 text-blue-700' if s.priority == 'medium'
+                                               else 'bg-slate-200 text-slate-700' }}">
+                                            {{ '🔥 Urgent' if s.priority == 'urgent' else '⚡ High' if s.priority == 'high' else '🎯 Medium' if s.priority == 'medium' else '☕ Low' }}
+                                        </span>
+                                    </div>
+                                    <p class="text-xs text-slate-500 mt-0.5">with {{ s.mentorship.student.full_name }} &bull; {{ s.scheduled_at.strftime('%a %d %b, %I:%M %p') }} &bull; {{ s.mode }}</p>
+                                </div>
+
+                                <!-- Priority Dropdown for quick change -->
+                                <form action="/session/{{ s.id }}/priority" method="post" class="flex items-center gap-1">
+                                    <select name="priority" class="priority-select text-[11px] font-bold border rounded-lg px-2 py-0.5 cursor-pointer bg-white hover:border-secondary
+                                        {{ 'border-red-300 text-red-700' if s.priority == 'urgent'
+                                           else 'border-amber-300 text-amber-700' if s.priority == 'high'
+                                           else 'border-blue-300 text-blue-700' if s.priority == 'medium'
+                                           else 'border-slate-300 text-slate-700' }}">
+                                        <option value="urgent" {{ 'selected' if s.priority == 'urgent' }}>🔥 Urgent</option>
+                                        <option value="high" {{ 'selected' if s.priority == 'high' }}>⚡ High</option>
+                                        <option value="medium" {{ 'selected' if s.priority == 'medium' }}>🎯 Medium</option>
+                                        <option value="low" {{ 'selected' if s.priority == 'low' }}>☕ Low</option>
+                                    </select>
+                                </form>
+                            </div>
+
+                            <div class="flex items-center gap-2 mt-3 pt-2 border-t border-slate-200/60">
+                                <form action="/session/{{ s.id }}/complete" method="post" class="flex items-center gap-2 flex-1">
+                                    <input type="text" name="notes" placeholder="What did you cover?" class="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
+                                    <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg whitespace-nowrap shadow-xs">Mark complete</button>
+                                </form>
+                                <form action="/session/{{ s.id }}/cancel" method="post">
+                                    <button type="submit" class="text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg">Cancel</button>
+                                </form>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-sm text-slate-500">No active upcoming sessions scheduled.</p>
+                    {% endif %}
                 </div>
             </div>
+        </section>
 
-            <!-- Side panel -->
-            <div class="space-y-6">
-                <div class="rounded-3xl border border-slate-200/80 bg-lightBg p-8">
-                    <h3 class="text-sm font-bold text-primary mb-2">Need to update your details?</h3>
-                    <p class="text-sm text-slate-600 font-medium">
-                        Contact your program admin, or
-                        <a href="/register?role=mentor" class="font-semibold text-secondary">register a new account</a> with a different email.
-                    </p>
+        <!-- Session History Section (Includes completed, cancelled, past, and expired sessions) -->
+        <section class="pb-10 max-w-7xl mx-auto px-6">
+            <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-8">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold text-primary">Session History &amp; Archive</h2>
+                    <span class="text-xs text-slate-400 font-medium">Auto-saved records</span>
                 </div>
-            </div>
-        </div>
-    </section>
 
-    <!-- Session Requests -->
-    <section id="requests" class="pb-8 max-w-7xl mx-auto px-6">
-        <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-8">
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="text-lg font-bold text-primary">Session requests</h2>
-                {% if pending_count and pending_count > 0 %}<span class="text-xs font-bold bg-accent text-darkNavy px-3 py-1 rounded-full">{{ pending_count }} waiting on you</span>{% endif %}
-            </div>
-
-            {% if pending_requests %}
-            <div class="space-y-3">
-                {% for s in pending_requests %}
-                <div class="p-4 bg-lightBg rounded-2xl border border-slate-200">
-                    <div class="flex items-start justify-between gap-3 mb-2">
+                {% if all_sessions %}
+                <div class="space-y-3">
+                    {% for s in all_sessions %}
+                    <div class="p-4 bg-lightBg rounded-2xl border border-slate-200 flex items-center justify-between flex-wrap gap-3">
                         <div>
-                            <div class="flex items-center gap-2">
+                            <div class="flex items-center gap-2 flex-wrap">
                                 <h4 class="font-semibold text-primary text-sm">{{ s.topic }}</h4>
                                 <span class="text-[10px] font-bold px-2 py-0.5 rounded-md
                                     {{ 'bg-red-100 text-red-700' if s.priority == 'urgent'
@@ -174,243 +358,214 @@
                                     {{ s.priority|capitalize }} Priority
                                 </span>
                             </div>
-                            <p class="text-xs text-slate-500">{{ s.mentorship.student.full_name }}</p>
+                            <p class="text-xs text-slate-500 mt-0.5">Student: {{ s.mentorship.student.full_name }} &bull; 📅 {{ s.scheduled_at.strftime('%a %d %b %Y, %I:%M %p') }}</p>
                         </div>
                         <span class="text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap
-                            {{ 'bg-amber-100 text-amber-700' if s.status == 'pending_mentor' else 'bg-blue-100 text-blue-700' }}">
+                            {{ 'bg-emerald-100 text-emerald-700' if s.status == 'confirmed'
+                               else 'bg-slate-200 text-slate-700' if s.status == 'completed'
+                               else 'bg-amber-100 text-amber-800' if s.status == 'not_responded'
+                               else 'bg-red-100 text-red-700' if s.status in ('cancelled', 'declined')
+                               else 'bg-blue-100 text-blue-700' }}">
                             {{ s.status_label }}
                         </span>
                     </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-sm text-slate-500">No session history recorded yet.</p>
+                {% endif %}
+            </div>
+        </section>
 
-                    {% if s.status == 'reschedule_by_student' %}
-                    <p class="text-xs text-slate-600 mb-1">Original: {{ s.scheduled_at.strftime('%a %d %b, %I:%M %p') }} &bull; Proposed: <strong>{{ s.proposed_at.strftime('%a %d %b, %I:%M %p') }}</strong></p>
-                    {% else %}
-                    <p class="text-xs text-slate-600 mb-1">📅 {{ s.scheduled_at.strftime('%a %d %b, %I:%M %p') }} &bull; 📹 {{ s.mode }} &bull; {{ s.duration_minutes }} min</p>
-                    {% endif %}
+        <!-- My Students Section -->
+        <section class="pb-24 max-w-7xl mx-auto px-6">
+            <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-8">
+                <h2 class="text-lg font-bold text-primary mb-6">My students</h2>
 
-                    <!-- Priority Selector & Actions -->
-                    <div class="flex flex-wrap items-center gap-2 mt-3 pt-2 border-t border-slate-200/70">
-                        <form action="/session/{{ s.id }}/priority" method="post" class="flex items-center gap-1.5">
-                            <span class="text-xs text-slate-500 font-semibold">Priority:</span>
-                            <select name="priority" onchange="this.form.submit()" class="text-xs font-bold border border-slate-300 rounded-lg px-2 py-1 bg-white">
-                                <option value="urgent" {{ 'selected' if s.priority == 'urgent' }}>🔥 Urgent</option>
-                                <option value="high" {{ 'selected' if s.priority == 'high' }}>⚡ High</option>
-                                <option value="medium" {{ 'selected' if s.priority == 'medium' }}>🎯 Medium</option>
-                                <option value="low" {{ 'selected' if s.priority == 'low' }}>☕ Low</option>
+                {% if my_mentorships %}
+                <div class="grid md:grid-cols-2 gap-5">
+                    {% for m in my_mentorships %}
+                    <div class="bg-lightBg p-5 rounded-2xl border border-slate-200">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <h3 class="font-bold text-primary text-sm">{{ m.student.full_name }}</h3>
+                                <p class="text-xs text-slate-500">Goal: {{ m.student.goal }}</p>
+                            </div>
+                            <span class="text-xs font-bold px-3 py-1 rounded-full
+                                {{ 'bg-emerald-100 text-emerald-700' if m.status == 'active' else 'bg-slate-200 text-slate-600' }}">
+                                {{ m.status | capitalize }}
+                            </span>
+                        </div>
+
+                        <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1 mt-3">
+                            <span>Progress</span>
+                            <span>{{ m.progress }}%</span>
+                        </div>
+                        <div class="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden mb-4">
+                            <div class="bg-secondary h-full rounded-full transition-all duration-500" style="width: {{ m.progress }}%;"></div>
+                        </div>
+
+                        <form action="/mentor/update-progress/{{ m.id }}" method="post" class="flex items-center gap-2">
+                            <input type="range" name="progress" min="0" max="100" step="5" value="{{ m.progress }}"
+                                   class="flex-1 accent-secondary" oninput="this.nextElementSibling.value = this.value">
+                            <output class="text-xs font-bold text-primary w-10 text-right">{{ m.progress }}</output>
+                            <select name="status" class="text-xs font-semibold border border-slate-300 rounded-xl px-2 py-1.5">
+                                <option value="active" {{ 'selected' if m.status == 'active' }}>Active</option>
+                                <option value="completed" {{ 'selected' if m.status == 'completed' }}>Completed</option>
                             </select>
+                            <button type="submit" class="text-xs font-bold text-white bg-primary hover:bg-slate-800 px-3 py-1.5 rounded-xl shadow-xs whitespace-nowrap">
+                                Save
+                            </button>
                         </form>
 
-                        <div class="flex items-center gap-2 ml-auto">
-                            {% if s.status == 'pending_mentor' %}
-                            <form action="/session/{{ s.id }}/confirm" method="post">
-                                <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg">Confirm</button>
-                            </form>
-                            {% elif s.status == 'reschedule_by_student' %}
-                            <form action="/session/{{ s.id }}/accept-proposal" method="post">
-                                <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg">Accept new time</button>
-                            </form>
-                            {% endif %}
-
-                            <details class="inline-block">
-                                <summary class="list-none cursor-pointer text-xs font-bold bg-white border border-slate-300 hover:border-slate-400 text-primary px-3 py-1.5 rounded-lg">Propose time</summary>
-                                <form action="/session/{{ s.id }}/propose" method="post" class="mt-2 flex flex-wrap gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                                    <input type="date" name="date" required class="text-xs border border-slate-300 rounded-lg px-2 py-1.5">
-                                    <input type="time" name="time" required class="text-xs border border-slate-300 rounded-lg px-2 py-1.5">
-                                    <button type="submit" class="text-xs font-bold bg-primary hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg">Send</button>
+                        <div class="flex gap-2 mt-3 pt-3 border-t border-slate-200">
+                            <details class="flex-1">
+                                <summary class="list-none cursor-pointer text-xs font-bold text-center bg-white border border-slate-300 hover:border-slate-400 text-primary px-3 py-2 rounded-xl">📅 Schedule session</summary>
+                                <form action="/session/book/{{ m.id }}" method="post" class="mt-3 space-y-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                                    <input type="text" name="topic" placeholder="Topic" required class="w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5">
+                                    <div class="flex gap-2">
+                                        <input type="date" name="date" required class="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
+                                        <input type="time" name="time" required class="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <input type="number" name="duration" value="60" min="15" step="15" class="w-16 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
+                                        <select name="mode" class="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
+                                            <option>Google Meet</option>
+                                            <option>Zoom</option>
+                                            <option>In-person</option>
+                                        </select>
+                                        <select name="priority" class="text-xs border border-slate-300 rounded-lg px-2 py-1.5 font-bold">
+                                            <option value="urgent">🔥 Urgent</option>
+                                            <option value="high">⚡ High</option>
+                                            <option value="medium" selected>🎯 Medium</option>
+                                            <option value="low">☕ Low</option>
+                                        </select>
+                                    </div>
+                                    <p class="text-[10px] text-slate-400">Directly scheduled &amp; sorted into queue.</p>
+                                    <button type="submit" class="w-full text-xs font-bold bg-primary hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg shadow-xs">Book session</button>
                                 </form>
                             </details>
 
-                            <details class="inline-block">
-                                <summary class="list-none cursor-pointer text-xs font-bold text-red-600 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg">Decline</summary>
-                                <form action="/session/{{ s.id }}/decline" method="post" class="mt-2 flex gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                                    <input type="text" name="reason" placeholder="Reason (optional)" class="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
-                                    <button type="submit" class="text-xs font-bold bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg">Confirm decline</button>
-                                </form>
-                            </details>
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <p class="text-sm text-slate-500">Nothing waiting on you right now.</p>
-            {% endif %}
-        </div>
-    </section>
+                            <details class="flex-1">
+                                <summary class="list-none cursor-pointer text-xs font-bold text-center bg-white border border-slate-300 hover:border-slate-400 text-primary px-3 py-2 rounded-xl">📁 Share resource</summary>
+                                <form action="/resource/add/{{ m.id }}" method="post" enctype="multipart/form-data" class="mt-3 space-y-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                                    <input type="text" name="title" placeholder="Title" required class="w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5">
 
-    <!-- Notifications & Upcoming Sessions -->
-    <section class="pb-8 max-w-7xl mx-auto px-6">
-        <div class="grid lg:grid-cols-2 gap-8">
-            <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-8">
-                <h2 class="text-lg font-bold text-primary mb-4">Notifications</h2>
-                {% if notifications %}
-                <ul class="space-y-3">
-                    {% for n in notifications %}
-                    <li class="flex items-start gap-3">
-                        {% if not n.is_read %}<span class="mt-1.5 w-2 h-2 rounded-full bg-secondary flex-shrink-0"></span>{% else %}<span class="mt-1.5 w-2 h-2 flex-shrink-0"></span>{% endif %}
-                        <div>
-                            <p class="text-sm text-slate-700">{{ n.message }}</p>
-                            <span class="text-xs text-slate-400">{{ n.created_at.strftime('%d %b, %I:%M %p') }}</span>
-                        </div>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% else %}
-                <p class="text-sm text-slate-500">No notifications yet.</p>
-                {% endif %}
-            </div>
-
-            <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-8">
-                <h2 class="text
-                            <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-8">
-                <h2 class="text-lg font-bold text-primary mb-4">Upcoming sessions</h2>
-                {% if upcoming_sessions %}
-                <ul class="space-y-3">
-                    {% for s in upcoming_sessions %}
-                    <li class="p-4 bg-lightBg rounded-2xl border border-slate-200">
-                        <div class="flex items-start justify-between gap-2 mb-1">
-                            <p class="text-sm font-semibold text-primary">{{ s.topic }}</p>
-                            <!-- Priority Selector -->
-                            <form action="/session/{{ s.id }}/priority" method="post" class="flex items-center gap-1">
-                                <select name="priority" onchange="this.form.submit()" class="text-[11px] font-bold border rounded-lg px-2 py-0.5
-                                    {{ 'border-red-300 text-red-700 bg-red-50' if s.priority == 'urgent'
-                                       else 'border-amber-300 text-amber-700 bg-amber-50' if s.priority == 'high'
-                                       else 'border-blue-300 text-blue-700 bg-blue-50' if s.priority == 'medium'
-                                       else 'border-slate-300 text-slate-700 bg-slate-50' }}">
-                                    <option value="urgent" {{ 'selected' if s.priority == 'urgent' }}>🔥 Urgent</option>
-                                    <option value="high" {{ 'selected' if s.priority == 'high' }}>⚡ High</option>
-                                    <option value="medium" {{ 'selected' if s.priority == 'medium' }}>🎯 Medium</option>
-                                    <option value="low" {{ 'selected' if s.priority == 'low' }}>☕ Low</option>
-                                </select>
-                            </form>
-                        </div>
-                        <p class="text-xs text-slate-500">with {{ s.mentorship.student.full_name }} &bull; {{ s.scheduled_at.strftime('%a %d %b, %I:%M %p') }} &bull; {{ s.mode }}</p>
-                        <div class="flex items-center gap-2 mt-3 pt-2 border-t border-slate-200/60">
-                            <form action="/session/{{ s.id }}/complete" method="post" class="flex items-center gap-2 flex-1">
-                                <input type="text" name="notes" placeholder="What did you cover?" class="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
-                                <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg whitespace-nowrap">Mark complete</button>
-                            </form>
-                            <form action="/session/{{ s.id }}/cancel" method="post">
-                                <button type="submit" class="text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg">Cancel</button>
-                            </form>
-                        </div>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% else %}
-                <p class="text-sm text-slate-500">No upcoming sessions scheduled.</p>
-                {% endif %}
-            </div>
-        </div>
-    </section>
-
-    <!-- My Students Section -->
-    <section class="pb-24 max-w-7xl mx-auto px-6">
-        <div class="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-8">
-            <h2 class="text-lg font-bold text-primary mb-6">My students</h2>
-
-            {% if my_mentorships %}
-            <div class="grid md:grid-cols-2 gap-5">
-                {% for m in my_mentorships %}
-                <div class="bg-lightBg p-5 rounded-2xl border border-slate-200">
-                    <div class="flex items-center justify-between mb-2">
-                        <div>
-                            <h3 class="font-bold text-primary text-sm">{{ m.student.full_name }}</h3>
-                            <p class="text-xs text-slate-500">Goal: {{ m.student.goal }}</p>
-                        </div>
-                        <span class="text-xs font-bold px-3 py-1 rounded-full
-                            {{ 'bg-emerald-100 text-emerald-700' if m.status == 'active' else 'bg-slate-200 text-slate-600' }}">
-                            {{ m.status | capitalize }}
-                        </span>
-                    </div>
-
-                    <div class="flex justify-between text-xs font-semibold text-slate-600 mb-1 mt-3">
-                        <span>Progress</span>
-                        <span>{{ m.progress }}%</span>
-                    </div>
-                    <div class="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden mb-4">
-                        <div class="bg-secondary h-full rounded-full transition-all duration-500" style="width: {{ m.progress }}%;"></div>
-                    </div>
-
-                    <form action="/mentor/update-progress/{{ m.id }}" method="post" class="flex items-center gap-2">
-                        <input type="range" name="progress" min="0" max="100" step="5" value="{{ m.progress }}"
-                               class="flex-1 accent-secondary" oninput="this.nextElementSibling.value = this.value">
-                        <output class="text-xs font-bold text-primary w-10 text-right">{{ m.progress }}</output>
-                        <select name="status" class="text-xs font-semibold border border-slate-300 rounded-xl px-2 py-1.5">
-                            <option value="active" {{ 'selected' if m.status == 'active' }}>Active</option>
-                            <option value="completed" {{ 'selected' if m.status == 'completed' }}>Completed</option>
-                        </select>
-                        <button type="submit" class="text-xs font-bold text-white bg-primary hover:bg-slate-800 px-3 py-1.5 rounded-xl shadow-xs whitespace-nowrap">
-                            Save
-                        </button>
-                    </form>
-
-                    <div class="flex gap-2 mt-3 pt-3 border-t border-slate-200">
-                        <details class="flex-1">
-                            <summary class="list-none cursor-pointer text-xs font-bold text-center bg-white border border-slate-300 hover:border-slate-400 text-primary px-3 py-2 rounded-xl">📅 Schedule session</summary>
-                            <form action="/session/book/{{ m.id }}" method="post" class="mt-3 space-y-2 bg-white p-3 rounded-xl border border-slate-200">
-                                <input type="text" name="topic" placeholder="Topic" required class="w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5">
-                                <div class="flex gap-2">
-                                    <input type="date" name="date" required class="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
-                                    <input type="time" name="time" required class="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
-                                </div>
-                                <div class="flex gap-2">
-                                    <input type="number" name="duration" value="60" min="15" step="15" class="w-16 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
-                                    <select name="mode" class="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
-                                        <option>Google Meet</option>
-                                        <option>Zoom</option>
-                                        <option>In-person</option>
+                                    <select name="resource_type" class="w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5"
+                                            onchange="
+                                                const isPdf = this.value === 'pdf';
+                                                this.form.querySelectorAll('.resource-file-field').forEach(el => el.classList.toggle('hidden', !isPdf));
+                                                this.form.querySelectorAll('.resource-url-field').forEach(el => el.classList.toggle('hidden', isPdf));
+                                                this.form.querySelector('input[name=file]').required = isPdf;
+                                                this.form.querySelector('input[name=url]').required = !isPdf;
+                                            ">
+                                        <option value="pdf">PDF Document (upload a file)</option>
+                                        <option value="video">Video (link)</option>
+                                        <option value="code">Source Code (link)</option>
+                                        <option value="link" selected>Link</option>
                                     </select>
-                                    <select name="priority" class="text-xs border border-slate-300 rounded-lg px-2 py-1.5">
-                                        <option value="medium" selected>Medium</option>
-                                        <option value="high">High</option>
-                                        <option value="urgent">Urgent</option>
-                                        <option value="low">Low</option>
-                                    </select>
-                                </div>
-                                <p class="text-[10px] text-slate-400">Directly scheduled &amp; confirmed by you.</p>
-                                <button type="submit" class="w-full text-xs font-bold bg-primary hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg">Book</button>
-                            </form>
-                        </details>
 
-                        <details class="flex-1">
-                            <summary class="list-none cursor-pointer text-xs font-bold text-center bg-white border border-slate-300 hover:border-slate-400 text-primary px-3 py-2 rounded-xl">📁 Share resource</summary>
-                            <form action="/resource/add/{{ m.id }}" method="post" enctype="multipart/form-data" class="mt-3 space-y-2 bg-white p-3 rounded-xl border border-slate-200">
-                                <input type="text" name="title" placeholder="Title" required class="w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5">
+                                    <input type="file" name="file" accept="application/pdf"
+                                           class="resource-file-field w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5 file:mr-2 file:text-xs file:font-bold file:bg-lightBg file:border-0 file:rounded file:px-2 file:py-1 hidden">
+                                    <p class="resource-file-field text-[10px] text-slate-400 hidden">PDF only, up to 15 MB.</p>
 
-                                <select name="resource_type" class="w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5"
-                                        onchange="
-                                            const isPdf = this.value === 'pdf';
-                                            this.form.querySelectorAll('.resource-file-field').forEach(el => el.classList.toggle('hidden', !isPdf));
-                                            this.form.querySelectorAll('.resource-url-field').forEach(el => el.classList.toggle('hidden', isPdf));
-                                            this.form.querySelector('input[name=file]').required = isPdf;
-                                            this.form.querySelector('input[name=url]').required = !isPdf;
-                                        ">
-                                    <option value="pdf">PDF Document (upload a file)</option>
-                                    <option value="video">Video (link)</option>
-                                    <option value="code">Source Code (link)</option>
-                                    <option value="link" selected>Link</option>
-                                </select>
-
-                                <input type="file" name="file" accept="application/pdf"
-                                       class="resource-file-field w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5 file:mr-2 file:text-xs file:font-bold file:bg-lightBg file:border-0 file:rounded file:px-2 file:py-1 hidden">
-                                <p class="resource-file-field text-[10px] text-slate-400 hidden">PDF only, up to 15 MB.</p>
-
-                                <input type="url" name="url" placeholder="Link (Drive, YouTube, GitHub...)" required
+                                    <input type="url" name="url" placeholder="Link (Drive, YouTube, GitHub...)" required
                                        class="resource-url-field w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5">
 
-                                <button type="submit" class="w-full text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg">Share</button>
-                            </form>
-                        </details>
+                                    <button type="submit" class="w-full text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg shadow-xs">Share</button>
+                                </form>
+                            </details>
+                        </div>
                     </div>
+                    {% endfor %}
                 </div>
-                {% endfor %}
+                {% else %}
+                <p class="text-sm text-slate-500">No students have connected with you yet.</p>
+                {% endif %}
             </div>
-            {% else %}
-            <p class="text-sm text-slate-500">No students have connected with you yet.</p>
-            {% endif %}
-        </div>
-    </section>
+        </section>
+    </main>
 
+    <!-- Async Form Interceptor: Updates sections seamlessly without full page reload -->
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('submit', async (e) => {
+            const form = e.target;
+            if (!form || form.method.toUpperCase() !== 'POST') return;
+            if (form.hasAttribute('data-no-async')) return;
+
+            e.preventDefault();
+
+            const submitBtn = form.querySelector('button[type="submit"]');
+            const originalText = submitBtn ? submitBtn.innerHTML : '';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.classList.add('opacity-70', 'cursor-wait');
+            }
+
+            try {
+                const formData = new FormData(form);
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+
+                if (response.ok) {
+                    const htmlText = await response.text();
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlText, 'text/html');
+
+                    // Swap main content seamlessly without page reload
+                    const newMain = doc.getElementById('main-content');
+                    const curMain = document.getElementById('main-content');
+                    if (newMain && curMain) {
+                        curMain.innerHTML = newMain.innerHTML;
+                    }
+
+                    // Swap header actions & counters
+                    const newHeader = doc.getElementById('header-actions');
+                    const curHeader = document.getElementById('header-actions');
+                    if (newHeader && curHeader) {
+                        curHeader.innerHTML = newHeader.innerHTML;
+                    }
+
+                    // Swap flash messages
+                    const newFlash = doc.getElementById('flash-messages');
+                    const curFlash = document.getElementById('flash-messages');
+                    if (newFlash && curFlash) {
+                        curFlash.innerHTML = newFlash.innerHTML;
+                        setTimeout(() => {
+                            const alert = curFlash.querySelector('div');
+                            if (alert) alert.style.transition = 'opacity 0.5s ease';
+                            if (alert) alert.style.opacity = '0';
+                        }, 4000);
+                    }
+                } else {
+                    form.submit();
+                }
+            } catch (err) {
+                console.error('Async update failed, falling back to standard submit:', err);
+                form.submit();
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('opacity-70', 'cursor-wait');
+                    submitBtn.innerHTML = originalText;
+                }
+            }
+        });
+
+        // Instant submission when priority dropdown is changed
+        document.addEventListener('change', (e) => {
+            if (e.target && e.target.classList.contains('priority-select')) {
+                const form = e.target.closest('form');
+                if (form) {
+                    form.requestSubmit();
+                }
+            }
+        });
+    });
+    </script>
 </body>
 </html>
