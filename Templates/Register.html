@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Register - EduConnect</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -11,14 +14,26 @@
                 extend: {
                     colors: {
                         primary: "#1E293B",
-                        secondary: "#10B981",
-                        accent: "#FBBF24",
+                        secondary: "#0F766E",
+                        accent: "#D4A017",
                         lightBg: "#F8FAFC"
+                    },
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                        display: ['"Fraunces"', 'ui-serif', 'Georgia', 'serif']
                     }
                 }
             }
         }
     </script>
+    <style>
+        body {
+            background-image:
+                radial-gradient(900px 320px at 12% -80px, rgba(15,118,110,0.08), transparent 70%),
+                radial-gradient(800px 300px at 92% -60px, rgba(99,102,241,0.07), transparent 70%);
+            background-repeat: no-repeat;
+        }
+            </style>
 </head>
 <body class="bg-lightBg text-slate-900 font-sans antialiased min-h-screen">
     <!-- Header -->
@@ -28,17 +43,17 @@
                 <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white font-bold text-xl shadow-md">
                     <img src="{{ url_for('static', filename='logo.jpg') }}" alt="EduConnect logo" class="w-10 h-10 rounded-xl object-cover">
                 </div>
-                <span class="text-2xl font-extrabold tracking-tight text-primary">EduConnect</span>
+                <span class="font-display text-2xl font-semibold tracking-tight text-primary">EduConnect</span>
             </a>
             <nav class="flex gap-4 text-sm font-semibold text-primary">
-                <a href="/login">Login</a>
+                <a href="/login" class="text-sm font-bold text-white bg-primary hover:bg-slate-800 px-5 py-2.5 rounded-xl shadow-md transition-colors">Login</a>
             </nav>
         </div>
     </header>
 
     <main class="max-w-3xl mx-auto px-6 py-12">
-        <section class="rounded-3xl border border-slate-200 bg-white p-8 sm:p-10 shadow-xl">
-            <h1 class="text-3xl sm:text-4xl font-extrabold text-primary">Create an Account</h1>
+        <section class="rounded-2xl border border-slate-200 bg-white p-8 sm:p-10 shadow-sm">
+            <h1 class="font-display text-3xl sm:text-4xl font-semibold text-primary tracking-tight">Create an Account</h1>
             <p class="mt-2 text-slate-600 text-sm">
                 Join EduConnect as a student looking to learn or as a mentor sharing your expertise.
             </p>
@@ -48,18 +63,28 @@
                 <fieldset>
                     <legend class="text-sm font-semibold text-slate-700 mb-3">I want to register as</legend>
                     <div class="grid sm:grid-cols-2 gap-4">
-                        <label class="flex items-start gap-3 rounded-2xl border p-4 cursor-pointer transition {{ 'border-secondary bg-emerald-50/40 ring-2 ring-secondary' if selected_role == 'student' else 'border-slate-200 hover:bg-slate-50' }}">
+                        <label class="flex items-start gap-3 rounded-2xl border p-4 cursor-pointer transition {{ 'border-secondary bg-teal-50/40 ring-2 ring-secondary' if selected_role == 'student' else 'border-slate-200 hover:bg-slate-50' }}">
                             <input type="radio" name="role" value="student" onchange="this.form.submit()" {{ 'checked' if selected_role == 'student' }} class="mt-1 h-4 w-4 text-secondary focus:ring-secondary">
-                            <span>
-                                <span class="block font-semibold text-primary">Student</span>
-                                <span class="block text-xs text-slate-500">Connect with mentors and book sessions.</span>
+                            <span class="flex items-start gap-3">
+                                <span class="mt-0.5 w-9 h-9 shrink-0 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                                    <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L2 8l10 5 10-5-10-5z"/><path d="M6 10v5c0 1.5 2.5 3 6 3s6-1.5 6-3v-5"/></svg>
+                                </span>
+                                <span>
+                                    <span class="block font-semibold text-primary">Student</span>
+                                    <span class="block text-xs text-slate-500">Connect with mentors and book sessions.</span>
+                                </span>
                             </span>
                         </label>
-                        <label class="flex items-start gap-3 rounded-2xl border p-4 cursor-pointer transition {{ 'border-secondary bg-emerald-50/40 ring-2 ring-secondary' if selected_role == 'mentor' else 'border-slate-200 hover:bg-slate-50' }}">
+                        <label class="flex items-start gap-3 rounded-2xl border p-4 cursor-pointer transition {{ 'border-secondary bg-teal-50/40 ring-2 ring-secondary' if selected_role == 'mentor' else 'border-slate-200 hover:bg-slate-50' }}">
                             <input type="radio" name="role" value="mentor" onchange="this.form.submit()" {{ 'checked' if selected_role == 'mentor' }} class="mt-1 h-4 w-4 text-secondary focus:ring-secondary">
-                            <span>
-                                <span class="block font-semibold text-primary">Mentor</span>
-                                <span class="block text-xs text-slate-500">Guide mentees, share resources &amp; manage sessions.</span>
+                            <span class="flex items-start gap-3">
+                                <span class="mt-0.5 w-9 h-9 shrink-0 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center">
+                                    <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0114 0v1"/><path d="M17 10.5c1.5-.3 2.5-1.6 2.5-3.2A3.3 3.3 0 0016 4"/></svg>
+                                </span>
+                                <span>
+                                    <span class="block font-semibold text-primary">Mentor</span>
+                                    <span class="block text-xs text-slate-500">Guide mentees, share resources &amp; manage sessions.</span>
+                                </span>
                             </span>
                         </label>
                     </div>

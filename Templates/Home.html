@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EduConnect - Home</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -11,14 +14,26 @@
                 extend: {
                     colors: {
                         primary: "#1E293B",
-                        secondary: "#10B981",
-                        accent: "#FBBF24",
+                        secondary: "#0F766E",
+                        accent: "#D4A017",
                         lightBg: "#F8FAFC"
+                    },
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                        display: ['"Fraunces"', 'ui-serif', 'Georgia', 'serif']
                     }
                 }
             }
         }
     </script>
+    <style>
+        body {
+            background-image:
+                radial-gradient(900px 320px at 12% -80px, rgba(15,118,110,0.08), transparent 70%),
+                radial-gradient(800px 300px at 92% -60px, rgba(99,102,241,0.07), transparent 70%);
+            background-repeat: no-repeat;
+        }
+            </style>
 </head>
 <body class="bg-lightBg text-slate-900 font-sans antialiased">
     <header class="border-b border-slate-200 bg-white">
@@ -27,13 +42,13 @@
                 <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-secondary text-white flex items-center justify-center font-bold"><img src="{{ url_for('static', filename='logo.jpg') }}" alt="EduConnect logo" class="w-10 h-10 rounded-xl object-cover">
 </div>
                 <div>
-                    <h1 class="text-xl font-bold text-primary">EduConnect</h1>
+                    <h1 class="font-display text-xl font-semibold text-primary">EduConnect</h1>
                     <p class="text-xs text-slate-500">Student and mentor onboarding</p>
                 </div>
             </div>
             <div class="flex items-center gap-3">
-                <a href="/register?role=student" class="text-sm font-semibold text-primary">Student Register</a>
-                <a href="/register?role=mentor" class="text-sm font-semibold text-primary">Mentor Register</a>
+                <a href="/register?role=student" class="hidden sm:inline-block text-sm font-semibold text-primary border border-slate-200 hover:border-secondary hover:text-secondary px-4 py-2.5 rounded-xl transition-colors">Student Register</a>
+                <a href="/register?role=mentor" class="hidden sm:inline-block text-sm font-semibold text-primary border border-slate-200 hover:border-secondary hover:text-secondary px-4 py-2.5 rounded-xl transition-colors">Mentor Register</a>
                 <a href="/login" class="text-sm font-bold text-white bg-primary hover:bg-slate-800 px-5 py-2.5 rounded-xl shadow-md transition-colors">Login</a>
             </div>
         </div>
@@ -41,30 +56,43 @@
 
     <main class="max-w-6xl mx-auto px-6 py-16">
         <section class="max-w-xl mx-auto flex flex-col items-center text-center">
-            <span class="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-secondary">SQLite database connected</span>
-            <h2 class="mt-6 text-4xl font-extrabold text-primary leading-tight">
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-secondary">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                Trusted by students and mentors
+            </span>
+            <h2 class="mt-6 font-display text-4xl font-semibold text-primary leading-tight tracking-tight">
                 Choose your role and start your journey with EduConnect
             </h2>
 
-            <div class="mt-10 w-full rounded-3xl border border-slate-200 bg-white p-8 shadow-xl text-left">
+            <div class="mt-10 w-full rounded-2xl border border-slate-200 bg-white p-8 shadow-sm text-left">
                 <h3 class="text-2xl font-bold text-primary">Start here</h3>
-                <p class="mt-2 text-sm text-slate-500">Select one option using the radio buttons, then continue to the correct form.</p>
+                <p class="mt-2 text-sm text-slate-500">Choose how you'd like to join, then continue to the right form.</p>
 
                 <form action="/choose-role" method="post" class="mt-6 space-y-5">
                     <fieldset>
                         <legend class="text-sm font-semibold text-slate-700 mb-3">I want to join as</legend>
                         <label class="flex items-start gap-3 rounded-2xl border border-slate-200 p-4 cursor-pointer hover:bg-slate-50">
                             <input type="radio" name="role" value="student" checked class="mt-1 h-4 w-4 text-secondary focus:ring-secondary">
-                            <span>
-                                <span class="block font-semibold text-primary">Student</span>
-                                <span class="block text-sm text-slate-500">Save learning goals and preferred study mode.</span>
+                            <span class="flex items-start gap-3">
+                                <span class="mt-0.5 w-9 h-9 shrink-0 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                                    <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L2 8l10 5 10-5-10-5z"/><path d="M6 10v5c0 1.5 2.5 3 6 3s6-1.5 6-3v-5"/></svg>
+                                </span>
+                                <span>
+                                    <span class="block font-semibold text-primary">Student</span>
+                                    <span class="block text-sm text-slate-500">Save learning goals and preferred study mode.</span>
+                                </span>
                             </span>
                         </label>
                         <label class="mt-3 flex items-start gap-3 rounded-2xl border border-slate-200 p-4 cursor-pointer hover:bg-slate-50">
                             <input type="radio" name="role" value="mentor" class="mt-1 h-4 w-4 text-secondary focus:ring-secondary">
-                            <span>
-                                <span class="block font-semibold text-primary">Mentor</span>
-                                <span class="block text-sm text-slate-500">Save expertise and mentoring format.</span>
+                            <span class="flex items-start gap-3">
+                                <span class="mt-0.5 w-9 h-9 shrink-0 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center">
+                                    <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0114 0v1"/><path d="M17 10.5c1.5-.3 2.5-1.6 2.5-3.2A3.3 3.3 0 0016 4"/></svg>
+                                </span>
+                                <span>
+                                    <span class="block font-semibold text-primary">Mentor</span>
+                                    <span class="block text-sm text-slate-500">Save expertise and mentoring format.</span>
+                                </span>
                             </span>
                         </label>
                     </fieldset>

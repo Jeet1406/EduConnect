@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Dashboard - EduConnect</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -11,15 +14,32 @@
                 extend: {
                     colors: {
                         primary: '#1E293B',
-                        secondary: '#10B981',
-                        accent: '#FBBF24',
+                        secondary: '#0F766E',
+                        accent: '#D4A017',
                         darkNavy: '#0F172A',
                         lightBg: '#F8FAFC'
+                    },
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                        display: ['"Fraunces"', 'ui-serif', 'Georgia', 'serif']
                     }
                 }
             }
         }
     </script>
+    <style>
+        @keyframes toastIn { from { opacity: 0; transform: translateY(-14px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        .toast-pop { animation: toastIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+        body {
+            background-image:
+                radial-gradient(900px 320px at 12% -80px, rgba(15,118,110,0.08), transparent 70%),
+                radial-gradient(800px 300px at 92% -60px, rgba(99,102,241,0.07), transparent 70%);
+            background-repeat: no-repeat;
+        }
+        .border-t-4.shadow-sm { transition: box-shadow .25s ease, transform .25s ease; }
+        .border-t-4.shadow-sm:hover { box-shadow: 0 14px 30px -14px rgba(15,23,42,.22); }
+
+    </style>
 </head>
 <body class="bg-lightBg text-darkNavy font-sans antialiased">
 
@@ -30,7 +50,7 @@
                 <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white font-bold text-xl shadow-md">
                     <img src="{{ url_for('static', filename='logo.jpg') }}" alt="EduConnect logo" class="w-10 h-10 rounded-xl object-cover">
                 </div>
-                <span class="text-2xl font-extrabold tracking-tight text-primary">EduConnect</span>
+                <span class="font-display text-2xl font-semibold tracking-tight text-primary">EduConnect</span>
             </a>
 
             <!-- Tabs -->
@@ -44,27 +64,56 @@
             </nav>
 
             <!-- Actions Header Container with ID -->
-            <div id="header-actions" class="flex items-center space-x-4">
-                <span class="text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1 rounded-full">Student account</span>
+            <div id="header-actions" class="flex items-center space-x-3">
+                <!-- Notification bell (takes you to the Notifications page) -->
+                <a href="/student?tab=notifications" class="relative inline-flex items-center justify-center w-10 h-10 rounded-full {{ 'bg-primary text-white' if active_tab == 'notifications' else 'bg-white border border-slate-200 text-primary hover:bg-slate-50' }}">
+                    <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                    {% if unread_count and unread_count > 0 %}
+                    <span class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">{{ unread_count }}</span>
+                    {% endif %}
+                </a>
+                <!-- Profile icon (takes you to the Profile page) -->
+                <a href="/student?tab=profile" class="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white font-bold text-sm {{ 'ring-2 ring-offset-2 ring-secondary' if active_tab == 'profile' else '' }}">
+                    {{ student.full_name[:1] if student and student.full_name else 'S' }}
+                </a>
                 <a href="/logout" data-no-async class="text-xs font-semibold text-slate-500 hover:text-primary">Logout</a>
             </div>
         </div>
     </header>
 
-    <!-- Flash Messages Container -->
-    <div id="flash-messages" class="max-w-7xl mx-auto px-6 pt-6 space-y-2">
+    <!-- Flash Messages Container: fixed so it's always caught regardless of scroll position -->
+    <div id="flash-messages" class="fixed top-24 inset-x-4 sm:inset-x-auto sm:right-6 z-[100] w-auto sm:w-full sm:max-w-sm space-y-2 pointer-events-none">
         {% with flashed = get_flashed_messages(with_categories=true) %}
         {% if flashed %}
             {% for category, message in flashed %}
-            <div class="flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold shadow-xs transition-all duration-300
-                {{ 'bg-red-50 text-red-700 border border-red-200' if category == 'error' else 'bg-emerald-50 text-emerald-700 border border-emerald-200' }}">
-                <span>{{ '⚠️' if category == 'error' else '✅' }}</span>
+            <div class="toast-pop pointer-events-auto flex items-center gap-2.5 px-4 py-3.5 rounded-2xl text-sm font-semibold shadow-lg border-l-4
+                {{ 'bg-red-50 text-red-700 border border-red-200 border-l-red-500' if category == 'error' else 'bg-emerald-50 text-emerald-700 border border-emerald-200 border-l-emerald-500' }}">
+                <span>
+                    {% if category == 'error' %}
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01M10.29 3.86l-8.18 14.14A1.5 1.5 0 003.5 20h17a1.5 1.5 0 001.39-2L13.71 3.86a1.5 1.5 0 00-2.42 0z"/></svg>
+                    {% else %}
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                    {% endif %}
+                </span>
                 <span>{{ message }}</span>
             </div>
             {% endfor %}
         {% endif %}
         {% endwith %}
     </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const flash = document.getElementById('flash-messages');
+            if (flash && flash.children.length) {
+                setTimeout(() => {
+                    Array.from(flash.children).forEach(el => {
+                        el.style.transition = 'opacity 0.5s ease';
+                        el.style.opacity = '0';
+                    });
+                }, 4000);
+            }
+        });
+    </script>
 
     <!-- Main Content Container for Partial Async Swapping -->
     <main id="main-content" class="max-w-7xl mx-auto px-6 py-8">
@@ -72,116 +121,18 @@
         <!-- ============================== OVERVIEW TAB ============================== -->
         {% if active_tab == 'overview' %}
 
-        <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm mb-8">
-            <h1 class="text-2xl font-bold text-primary">Welcome, {{ student.full_name }}</h1>
-            <p class="text-slate-500 text-sm mt-1">
-                Goal: <span class="font-semibold text-slate-700">{{ student.goal }}</span>
-                &bull; Preferred mode: <span class="font-semibold text-slate-700">{{ student.learning_mode }}</span>
-            </p>
-        </div>
-
         <div class="grid lg:grid-cols-3 gap-8">
 
             <!-- Left / Main column -->
             <div class="lg:col-span-2 space-y-8">
 
-                <!-- Notifications & Messages Panel -->
-                <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-                    <div class="flex items-center justify-between mb-6">
-                        <h2 class="text-lg font-bold text-primary">Notifications</h2>
-                        {% if unread_count > 0 %}
-                        <div class="flex items-center gap-3">
-                            <span class="bg-accent text-darkNavy text-xs font-bold px-3 py-1 rounded-full">{{ unread_count }} New</span>
-                            <form action="/notifications/mark-read" method="post" class="inline">
-                                <input type="hidden" name="return_tab" value="overview">
-                                <button type="submit" class="text-xs font-semibold text-slate-500 hover:text-primary">Mark all read</button>
-                            </form>
-                        </div>
-                        {% endif %}
+                <div class="bg-white p-8 rounded-2xl border border-slate-200 border-t-4 border-t-secondary shadow-sm">
+                    <div class="flex items-center gap-2.5 mb-6">
+                        <span class="w-8 h-8 rounded-lg bg-teal-50 text-secondary flex items-center justify-center shrink-0">
+                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0114 0v1"/><path d="M17 10.5c1.5-.3 2.5-1.6 2.5-3.2A3.3 3.3 0 0016 4"/></svg>
+                        </span>
+                        <h2 class="text-lg font-bold text-primary">My mentors</h2>
                     </div>
-
-                    {% if notifications %}
-                    <ul class="space-y-4">
-                        {% for n in notifications %}
-                        <li class="flex items-start gap-3 {{ '' if n.is_read else 'bg-emerald-50/40 -mx-2 px-2 py-2 rounded-xl' }}">
-                            {% if not n.is_read %}<span class="mt-1.5 w-2 h-2 rounded-full bg-secondary flex-shrink-0"></span>{% else %}<span class="mt-1.5 w-2 h-2 flex-shrink-0"></span>{% endif %}
-                            <div class="flex-1">
-                                <p class="text-sm text-slate-700">{{ n.message }}</p>
-                                <span class="text-xs text-slate-400">{{ n.created_at.strftime('%d %b, %I:%M %p') }}</span>
-
-                                {% if n.session_row and n.session_row.needs_action_from('student') %}
-                                <div class="flex flex-wrap gap-2 mt-2">
-                                    {% if n.session_row.status == 'reschedule_by_mentor' %}
-                                    <form action="/session/{{ n.session_row.id }}/accept-proposal" method="post">
-                                        <input type="hidden" name="return_tab" value="overview">
-                                        <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg shadow-xs">Accept new time</button>
-                                    </form>
-                                    <form action="/session/{{ n.session_row.id }}/reject-proposal" method="post">
-                                        <input type="hidden" name="return_tab" value="overview">
-                                        <button type="submit" class="text-xs font-bold bg-slate-100 hover:bg-slate-200 text-primary px-3 py-1.5 rounded-lg">Keep original time</button>
-                                    </form>
-                                    {% elif n.session_row.status == 'declined' %}
-                                    <a href="/student?tab=sessions" class="text-xs font-bold bg-primary hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg">Rebook</a>
-                                    {% endif %}
-                                </div>
-                                {% endif %}
-                            </div>
-                        </li>
-                        {% endfor %}
-                    </ul>
-                    {% else %}
-                    <p class="text-sm text-slate-500">No notifications yet. Connect with a mentor to get started.</p>
-                    {% endif %}
-                </div>
-
-                <!-- Session History & Analytics -->
-                <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-                    <div class="flex items-center justify-between mb-6">
-                        <h2 class="text-lg font-bold text-primary">Session History &amp; Analytics</h2>
-                        <a href="/student?tab=sessions" class="text-xs font-bold text-secondary hover:text-emerald-700">View All</a>
-                    </div>
-                    <div class="grid grid-cols-3 gap-4 mb-6">
-                        <div class="bg-lightBg rounded-2xl border border-slate-200 p-4 text-center">
-                            <h3 class="text-2xl font-bold text-primary">{{ confirmed_count }}</h3>
-                            <p class="text-xs text-slate-500 mt-1">Confirmed (Upcoming)</p>
-                        </div>
-                        <div class="bg-lightBg rounded-2xl border border-slate-200 p-4 text-center">
-                            <h3 class="text-2xl font-bold {{ 'text-accent' if action_count > 0 else 'text-primary' }}">{{ action_count }}</h3>
-                            <p class="text-xs text-slate-500 mt-1">Needs your action</p>
-                        </div>
-                        <div class="bg-lightBg rounded-2xl border border-slate-200 p-4 text-center">
-                            <h3 class="text-2xl font-bold text-primary">{{ total_hours }} hrs</h3>
-                            <p class="text-xs text-slate-500 mt-1">Learning time</p>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="flex justify-between text-xs font-semibold text-slate-600 mb-2">
-                            <span>Average progress across your mentors</span>
-                            <span>{{ avg_progress }}%</span>
-                        </label>
-                        <progress value="{{ avg_progress }}" max="100" class="w-full h-3 rounded-full [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-secondary [&::-webkit-progress-bar]:bg-slate-200"></progress>
-                    </div>
-
-                    {% if next_session %}
-                    <div class="mt-6 pt-6 border-t border-slate-100 flex items-center justify-between flex-wrap gap-3">
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <span class="text-xs text-slate-500">Highest Priority Session: <strong class="text-primary">{{ next_session.topic }}</strong> with {{ next_session.mentorship.mentor.full_name }} on {{ next_session.scheduled_at.strftime('%d %b, %I:%M %p') }}</span>
-                            <span class="text-[10px] font-bold px-2 py-0.5 rounded-md
-                                {{ 'bg-red-100 text-red-700' if next_session.priority == 'urgent'
-                                   else 'bg-amber-100 text-amber-700' if next_session.priority == 'high'
-                                   else 'bg-blue-100 text-blue-700' if next_session.priority == 'medium'
-                                   else 'bg-slate-200 text-slate-700' }}">
-                                {{ '🔥 Urgent' if next_session.priority == 'urgent' else '⚡ High' if next_session.priority == 'high' else '🎯 Medium' if next_session.priority == 'medium' else '☕ Low' }}
-                            </span>
-                        </div>
-                        <a href="/student?tab=sessions" class="bg-slate-100 hover:bg-slate-200 text-primary text-xs font-bold px-5 py-2.5 rounded-xl transition">View</a>
-                    </div>
-                    {% endif %}
-                </div>
-
-                <!-- My mentors & progress -->
-                <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-                    <h2 class="text-lg font-bold text-primary mb-6">My mentors</h2>
 
                     {% if my_mentorships %}
                     <div class="space-y-5">
@@ -214,15 +165,66 @@
                     {% endif %}
                 </div>
 
+                <!-- Session History & Analytics: moved to the bottom of the page, as requested -->
+                <div class="bg-white p-8 rounded-2xl border border-slate-200 border-t-4 border-t-blue-400 shadow-sm">
+                    <div class="flex items-center justify-between mb-6">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 15l4-6 3 4 5-8"/></svg>
+                            </span>
+                            <h2 class="text-lg font-bold text-primary">Session History &amp; Analytics</h2>
+                        </div>
+                        <a href="/student?tab=sessions" class="text-xs font-bold text-secondary hover:text-teal-700">View All</a>
+                    </div>
+                    <div class="grid grid-cols-3 gap-4 mb-6">
+                        <div class="bg-teal-50/60 rounded-2xl border border-teal-100 p-4 text-center">
+                            <h3 class="text-2xl font-bold text-secondary">{{ confirmed_count }}</h3>
+                            <p class="text-xs text-slate-500 mt-1">Confirmed (Upcoming)</p>
+                        </div>
+                        <div class="bg-amber-50/60 rounded-2xl border border-amber-100 p-4 text-center">
+                            <h3 class="text-2xl font-bold {{ 'text-accent' if action_count > 0 else 'text-primary' }}">{{ action_count }}</h3>
+                            <p class="text-xs text-slate-500 mt-1">Needs your action</p>
+                        </div>
+                        <div class="bg-blue-50/60 rounded-2xl border border-blue-100 p-4 text-center">
+                            <h3 class="text-2xl font-bold text-blue-600">{{ total_hours }} hrs</h3>
+                            <p class="text-xs text-slate-500 mt-1">Learning time</p>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="flex justify-between text-xs font-semibold text-slate-600 mb-2">
+                            <span>Average progress across your mentors</span>
+                            <span>{{ avg_progress }}%</span>
+                        </label>
+                        <progress value="{{ avg_progress }}" max="100" class="w-full h-3 rounded-full [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-secondary [&::-webkit-progress-bar]:bg-slate-200"></progress>
+                    </div>
+
+                    {% if next_session %}
+                    <div class="mt-6 pt-6 border-t border-slate-100 flex items-center justify-between flex-wrap gap-3">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-xs text-slate-500">Highest Priority Session: <strong class="text-primary">{{ next_session.topic }}</strong> with {{ next_session.mentorship.mentor.full_name }} on {{ next_session.scheduled_at.strftime('%d %b, %I:%M %p') }}</span>
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded-md
+                                {{ 'bg-red-100 text-red-700' if next_session.priority == 'urgent'
+                                   else 'bg-amber-100 text-amber-700' if next_session.priority == 'high'
+                                   else 'bg-blue-100 text-blue-700' if next_session.priority == 'medium'
+                                   else 'bg-slate-200 text-slate-700' }}">
+                                {{ 'Urgent' if next_session.priority == 'urgent' else 'High' if next_session.priority == 'high' else 'Medium' if next_session.priority == 'medium' else 'Low' }}
+                            </span>
+                        </div>
+                        <a href="/student?tab=sessions" class="bg-slate-100 hover:bg-slate-200 text-primary text-xs font-bold px-5 py-2.5 rounded-xl transition">View</a>
+                    </div>
+                    {% endif %}
+                </div>
+
             </div>
+
 
             <!-- Right column -->
             <div class="lg:col-span-1 space-y-6">
 
                 <!-- Resources preview -->
-                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 border-t-4 border-t-violet-400 shadow-sm">
                     <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400">Resources</h2>
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-violet-500">Resources</h2>
                         <a href="/student?tab=resources" class="text-xs font-bold text-secondary hover:text-emerald-700">Browse All</a>
                     </div>
                     {% if recent_resources %}
@@ -241,16 +243,17 @@
                 </div>
 
                 <!-- Find a mentor with Search by Role & Name -->
-                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                    <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-3">Find a mentor</h2>
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 border-t-4 border-t-blue-400 shadow-sm">
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-blue-500 mb-3">Find a mentor</h2>
 
                     <!-- Search Form -->
                     <form method="get" action="/student" class="mb-4">
                         <input type="hidden" name="tab" value="overview">
                         <div class="flex gap-2">
                             <input type="text" name="mentor_search" value="{{ mentor_search or '' }}" placeholder="Search by name, role, or skills..." class="w-full text-xs rounded-xl border border-slate-300 px-3 py-2 focus:border-secondary focus:outline-none">
-                            <button type="submit" class="bg-primary hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap shadow-xs">
-                                🔍 Search
+                            <button type="submit" class="inline-flex items-center gap-1.5 bg-primary hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap shadow-xs">
+                                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+                                Search
                             </button>
                         </div>
                         {% if mentor_search %}
@@ -303,10 +306,15 @@
         <!-- ============================== SESSIONS TAB (Priority Queue Ordered) ============================== -->
         {% elif active_tab == 'sessions' %}
 
-        <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div>
-                <h1 class="text-2xl font-bold text-primary">My Sessions 📅</h1>
-                <p class="text-slate-500 text-sm mt-1">Priority Queue active. Expired requests (past 24h) and completed past sessions automatically archive to Session History.</p>
+        <div class="bg-white p-8 rounded-2xl border border-slate-200 border-t-4 border-t-blue-400 shadow-sm mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div class="flex items-start gap-3">
+                <span class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 mt-0.5">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                </span>
+                <div>
+                    <h1 class="font-display text-2xl font-semibold text-primary">My Sessions</h1>
+                    <p class="text-slate-500 text-sm mt-1">Priority Queue active. Expired requests (past 24h) and completed past sessions automatically archive to Session History.</p>
+                </div>
             </div>
 
             {% if my_mentorships %}
@@ -339,10 +347,10 @@
                         <div class="flex items-center gap-2">
                             <span class="text-xs text-slate-500 font-semibold">Priority:</span>
                             <select name="priority" class="flex-1 text-xs border border-slate-300 rounded-xl px-3 py-2 font-bold">
-                                <option value="urgent">🔥 Urgent</option>
-                                <option value="high">⚡ High</option>
-                                <option value="medium" selected>🎯 Medium</option>
-                                <option value="low">☕ Low</option>
+                                <option value="urgent">Urgent</option>
+                                <option value="high">High</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="low">Low</option>
                             </select>
                         </div>
                         <button type="submit" class="w-full bg-accent hover:bg-amber-400 text-darkNavy text-sm font-bold px-4 py-2.5 rounded-xl transition">Request booking</button>
@@ -356,7 +364,7 @@
         <div class="grid lg:grid-cols-3 gap-6 mb-8">
 
             <!-- Next confirmed session (Highest Priority) -->
-            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 border-t-4 border-t-accent shadow-sm">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="font-bold text-primary">Top Priority Session</h3>
                     {% if next_session %}
@@ -365,17 +373,17 @@
                            else 'bg-amber-100 text-amber-700' if next_session.priority == 'high'
                            else 'bg-blue-100 text-blue-700' if next_session.priority == 'medium'
                            else 'bg-slate-200 text-slate-700' }}">
-                        {{ '🔥 Urgent' if next_session.priority == 'urgent' else '⚡ High' if next_session.priority == 'high' else '🎯 Medium' if next_session.priority == 'medium' else '☕ Low' }}
+                        {{ 'Urgent' if next_session.priority == 'urgent' else 'High' if next_session.priority == 'high' else 'Medium' if next_session.priority == 'medium' else 'Low' }}
                     </span>
                     {% endif %}
                 </div>
                 {% if next_session %}
                 <h4 class="font-bold text-primary text-sm">{{ next_session.mentorship.mentor.full_name }}</h4>
                 <p class="text-xs text-slate-500 mb-3">{{ next_session.mentorship.mentor.expertise }}</p>
-                <div class="text-xs text-slate-600 space-y-1 mb-4">
-                    <p>📅 {{ next_session.scheduled_at.strftime('%a, %d %b %Y') }}</p>
-                    <p>🕒 {{ next_session.scheduled_at.strftime('%I:%M %p') }} &bull; {{ next_session.duration_minutes }} min</p>
-                    <p>📹 {{ next_session.mode }}</p>
+                <div class="text-xs text-slate-600 space-y-1.5 mb-4">
+                    <p class="flex items-center gap-1.5"><svg class="w-3.5 h-3.5 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> {{ next_session.scheduled_at.strftime('%a, %d %b %Y') }}</p>
+                    <p class="flex items-center gap-1.5"><svg class="w-3.5 h-3.5 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg> {{ next_session.scheduled_at.strftime('%I:%M %p') }} &bull; {{ next_session.duration_minutes }} min</p>
+                    <p class="flex items-center gap-1.5"><svg class="w-3.5 h-3.5 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l4.5-3v10L15 14M4 6h9a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg> {{ next_session.mode }}</p>
                 </div>
                 <div class="bg-lightBg rounded-xl p-3 text-xs text-slate-700 mb-4"><strong>Topic:</strong> {{ next_session.topic }}</div>
                 <form action="/session/{{ next_session.id }}/cancel" method="post">
@@ -388,7 +396,7 @@
             </div>
 
             <!-- Calendar Widget -->
-            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 border-t-4 border-t-sky-400 shadow-sm">
                 <h3 class="font-bold text-primary mb-4">{{ month_label }}</h3>
                 <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400 mb-1">
                     <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
@@ -412,7 +420,7 @@
             </div>
 
             <!-- Session Summary Widget -->
-            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 border-t-4 border-t-secondary shadow-sm">
                 <h3 class="font-bold text-primary mb-4">Session Summary</h3>
                 <div class="grid grid-cols-2 gap-3 mb-4">
                     <div class="bg-lightBg rounded-xl p-3 text-center">
@@ -435,65 +443,9 @@
             </div>
         </div>
 
-        <!-- Bottom Grid -->
-        <div class="grid lg:grid-cols-2 gap-8">
-
-            <!-- Session History (Priority Queue Sorted) -->
-            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="font-bold text-primary">Session History &amp; Queue</h3>
-                    <span class="text-[11px] text-slate-400 font-semibold">Priority Queue Sorted</span>
-                </div>
-                <div class="flex gap-2 mb-4 flex-wrap">
-                    <a href="/student?tab=sessions&filter=all" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'all' else 'bg-lightBg text-slate-600' }}">All</a>
-                    <a href="/student?tab=sessions&filter=action" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'action' else 'bg-lightBg text-slate-600' }}">Needs action{% if action_count > 0 %} ({{ action_count }}){% endif %}</a>
-                    <a href="/student?tab=sessions&filter=confirmed" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'confirmed' else 'bg-lightBg text-slate-600' }}">Upcoming Live</a>
-                    <a href="/student?tab=sessions&filter=completed" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'completed' else 'bg-lightBg text-slate-600' }}">Completed</a>
-                    <a href="/student?tab=sessions&filter=cancelled" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'cancelled' else 'bg-lightBg text-slate-600' }}">Cancelled/Expired</a>
-                </div>
-
-                {% if sessions %}
-                <div class="space-y-3">
-                    {% for s in sessions %}
-                    <a href="/student?tab=sessions&filter={{ status_filter }}&session_id={{ s.id }}"
-                       class="block p-4 rounded-2xl border transition-all {{ 'border-secondary bg-emerald-50/40 ring-2 ring-secondary/20' if selected_session and selected_session.id == s.id else 'border-slate-200 bg-lightBg hover:border-slate-300' }}">
-                        <div class="flex items-center justify-between gap-2">
-                            <div>
-                                <div class="flex items-center gap-2 flex-wrap">
-                                    <h4 class="font-semibold text-primary text-sm">{{ s.topic }}</h4>
-                                    <!-- Priority Badge -->
-                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-md
-                                        {{ 'bg-red-100 text-red-700' if s.priority == 'urgent'
-                                           else 'bg-amber-100 text-amber-700' if s.priority == 'high'
-                                           else 'bg-blue-100 text-blue-700' if s.priority == 'medium'
-                                           else 'bg-slate-200 text-slate-700' }}">
-                                        {{ '🔥 Urgent' if s.priority == 'urgent' else '⚡ High' if s.priority == 'high' else '🎯 Medium' if s.priority == 'medium' else '☕ Low' }}
-                                    </span>
-                                </div>
-                                <p class="text-xs text-slate-500 mt-0.5">Mentor {{ s.mentorship.mentor.full_name }}</p>
-                                <p class="text-[11px] text-slate-400">📅 {{ s.scheduled_at.strftime('%a, %d %b') }} &bull; 🕒 {{ s.scheduled_at.strftime('%I:%M %p') }}</p>
-                                {% if s.proposed_at %}<p class="text-[11px] text-blue-600 mt-0.5">↻ Proposed: {{ s.proposed_at.strftime('%a, %d %b %I:%M %p') }}</p>{% endif %}
-                            </div>
-                            <span class="text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap
-                                {{ 'bg-emerald-100 text-emerald-700' if s.status == 'confirmed'
-                                   else 'bg-slate-200 text-slate-700' if s.status == 'completed'
-                                   else 'bg-amber-100 text-amber-800' if s.status == 'not_responded'
-                                   else 'bg-red-100 text-red-700' if s.status in ('cancelled', 'declined')
-                                   else 'bg-blue-100 text-blue-700' if s.status in ('reschedule_by_mentor', 'reschedule_by_student')
-                                   else 'bg-amber-100 text-amber-700' }}">
-                                {{ s.status_label }}
-                            </span>
-                        </div>
-                    </a>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <p class="text-sm text-slate-500">No sessions in this filter yet.</p>
-                {% endif %}
-            </div>
-
-            <!-- Session Details -->
-            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <!-- Session Details -->
+        <div class="grid lg:grid-cols-1 gap-8 mb-8">
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 border-t-4 border-t-blue-400 shadow-sm">
                 <h3 class="font-bold text-primary mb-4">Session Details</h3>
                 {% if selected_session %}
                 {% set s = selected_session %}
@@ -506,7 +458,7 @@
                                    else 'bg-amber-100 text-amber-700' if s.priority == 'high'
                                    else 'bg-blue-100 text-blue-700' if s.priority == 'medium'
                                    else 'bg-slate-200 text-slate-700' }}">
-                                {{ '🔥 Urgent Priority' if s.priority == 'urgent' else '⚡ High Priority' if s.priority == 'high' else '🎯 Medium Priority' if s.priority == 'medium' else '☕ Low Priority' }}
+                                {{ 'Urgent Priority' if s.priority == 'urgent' else 'High Priority' if s.priority == 'high' else 'Medium Priority' if s.priority == 'medium' else 'Low Priority' }}
                             </span>
                         </div>
                         <p class="text-sm text-slate-500">Mentor: {{ s.mentorship.mentor.full_name }}</p>
@@ -523,10 +475,10 @@
                 </div>
 
                 <div class="grid grid-cols-2 gap-4 text-xs text-slate-600 mb-4">
-                    <div>📅 <strong>Scheduled</strong><p>{{ s.scheduled_at.strftime('%a %d %b, %I:%M %p') }}</p></div>
-                    <div>⏱️ <strong>Duration</strong><p>{{ s.duration_minutes }} min</p></div>
-                    <div>📹 <strong>Mode</strong><p>{{ s.mode }}</p></div>
-                    {% if s.proposed_at %}<div>↻ <strong>Proposed</strong><p>{{ s.proposed_at.strftime('%a %d %b, %I:%M %p') }}</p></div>{% endif %}
+                    <div class="flex items-start gap-1.5"><svg class="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span><strong>Scheduled</strong><p>{{ s.scheduled_at.strftime('%a %d %b, %I:%M %p') }}</p></span></div>
+                    <div class="flex items-start gap-1.5"><svg class="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><span><strong>Duration</strong><p>{{ s.duration_minutes }} min</p></span></div>
+                    <div class="flex items-start gap-1.5"><svg class="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l4.5-3v10L15 14M4 6h9a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg><span><strong>Mode</strong><p>{{ s.mode }}</p></span></div>
+                    {% if s.proposed_at %}<div class="flex items-start gap-1.5"><svg class="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114-6.7M20 15a9 9 0 01-14 6.7"/></svg><span><strong>Proposed</strong><p>{{ s.proposed_at.strftime('%a %d %b, %I:%M %p') }}</p></span></div>{% endif %}
                 </div>
 
                 {% if s.notes %}
@@ -534,7 +486,7 @@
                     <h5 class="text-xs font-bold text-slate-500 uppercase mb-2">What we covered</h5>
                     <ul class="text-sm text-slate-700 space-y-1">
                         {% for line in s.notes.split('\n') %}
-                        {% if line.strip() %}<li>✔ {{ line.strip() }}</li>{% endif %}
+                        {% if line.strip() %}<li class="flex items-start gap-1.5"><svg class="w-3.5 h-3.5 text-secondary shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>{{ line.strip() }}</span></li>{% endif %}
                         {% endfor %}
                     </ul>
                 </div>
@@ -601,19 +553,87 @@
             </div>
         </div>
 
+        <!-- Session History & Queue: moved to the bottom-most part of the page, as requested -->
+        <div class="grid lg:grid-cols-1 gap-8">
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 border-t-4 border-t-slate-300 shadow-sm">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-primary">Session History &amp; Queue</h3>
+                    <span class="text-[11px] text-slate-400 font-semibold">Priority Queue Sorted</span>
+                </div>
+                <div class="flex gap-2 mb-4 flex-wrap">
+                    <a href="/student?tab=sessions&filter=all" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'all' else 'bg-lightBg text-slate-600' }}">All</a>
+                    <a href="/student?tab=sessions&filter=action" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'action' else 'bg-lightBg text-slate-600' }}">Needs action{% if action_count > 0 %} ({{ action_count }}){% endif %}</a>
+                    <a href="/student?tab=sessions&filter=confirmed" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'confirmed' else 'bg-lightBg text-slate-600' }}">Upcoming Live</a>
+                    <a href="/student?tab=sessions&filter=completed" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'completed' else 'bg-lightBg text-slate-600' }}">Completed</a>
+                    <a href="/student?tab=sessions&filter=cancelled" class="text-xs font-semibold px-3 py-1.5 rounded-full {{ 'bg-primary text-white' if status_filter == 'cancelled' else 'bg-lightBg text-slate-600' }}">Cancelled/Expired</a>
+                </div>
+
+                {% if sessions %}
+                <div class="space-y-3">
+                    {% for s in sessions %}
+                    <a href="/student?tab=sessions&filter={{ status_filter }}&session_id={{ s.id }}"
+                       class="block p-4 rounded-2xl border transition-all {{ 'border-secondary bg-emerald-50/40 ring-2 ring-secondary/20' if selected_session and selected_session.id == s.id else 'border-slate-200 bg-lightBg hover:border-slate-300' }}">
+                        <div class="flex items-center justify-between gap-2">
+                            <div>
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <h4 class="font-semibold text-primary text-sm">{{ s.topic }}</h4>
+                                    <!-- Priority Badge -->
+                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-md
+                                        {{ 'bg-red-100 text-red-700' if s.priority == 'urgent'
+                                           else 'bg-amber-100 text-amber-700' if s.priority == 'high'
+                                           else 'bg-blue-100 text-blue-700' if s.priority == 'medium'
+                                           else 'bg-slate-200 text-slate-700' }}">
+                                        {{ 'Urgent' if s.priority == 'urgent' else 'High' if s.priority == 'high' else 'Medium' if s.priority == 'medium' else 'Low' }}
+                                    </span>
+                                </div>
+                                <p class="text-xs text-slate-500 mt-0.5">Mentor {{ s.mentorship.mentor.full_name }}</p>
+                                <p class="flex items-center gap-1.5 text-[11px] text-slate-400">
+                                    <svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                    {{ s.scheduled_at.strftime('%a, %d %b') }} &bull;
+                                    <svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                                    {{ s.scheduled_at.strftime('%I:%M %p') }}
+                                </p>
+                                {% if s.proposed_at %}<p class="flex items-center gap-1.5 text-[11px] text-blue-600 mt-0.5"><svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114-6.7M20 15a9 9 0 01-14 6.7"/></svg> Proposed: {{ s.proposed_at.strftime('%a, %d %b %I:%M %p') }}</p>{% endif %}
+                            </div>
+                            <span class="text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap
+                                {{ 'bg-emerald-100 text-emerald-700' if s.status == 'confirmed'
+                                   else 'bg-slate-200 text-slate-700' if s.status == 'completed'
+                                   else 'bg-amber-100 text-amber-800' if s.status == 'not_responded'
+                                   else 'bg-red-100 text-red-700' if s.status in ('cancelled', 'declined')
+                                   else 'bg-blue-100 text-blue-700' if s.status in ('reschedule_by_mentor', 'reschedule_by_student')
+                                   else 'bg-amber-100 text-amber-700' }}">
+                                {{ s.status_label }}
+                            </span>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-sm text-slate-500">No sessions in this filter yet.</p>
+                {% endif %}
+            </div>
+        </div>
+
         <!-- ============================== RESOURCES TAB ============================== -->
         {% elif active_tab == 'resources' %}
 
-        <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm mb-8">
-            <h1 class="text-2xl font-bold text-primary">Resources & Learning Library</h1>
-            <p class="text-slate-500 text-sm mt-2">Access study materials, video masterclasses, and code repositories your mentors have shared.</p>
+        <div class="bg-white p-8 rounded-2xl border border-slate-200 border-t-4 border-t-violet-400 shadow-sm mb-8 flex items-start gap-3">
+            <span class="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center shrink-0 mt-0.5">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+            </span>
+            <div>
+                <h1 class="font-display text-2xl font-semibold text-primary">Resources & Learning Library</h1>
+                <p class="text-slate-500 text-sm mt-2">Access study materials, video masterclasses, and code repositories your mentors have shared.</p>
+            </div>
         </div>
 
-        <form method="get" action="/student" class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-stretch md:items-center mb-8">
+        <form method="get" action="/student" class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-stretch md:items-center mb-8">
             <input type="hidden" name="tab" value="resources">
             <div class="relative flex-1">
                 <input type="text" name="q" value="{{ query }}" placeholder="Search resources by title..." class="w-full rounded-2xl border border-slate-300 pl-12 pr-4 py-3 focus:border-secondary focus:outline-none text-sm" />
-                <div class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">🔍</div>
+                <div class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+                </div>
             </div>
             <div class="flex gap-3 flex-wrap">
                 <select name="type" onchange="this.form.submit()" class="rounded-2xl border border-slate-300 px-4 py-3 focus:border-secondary focus:outline-none text-sm font-medium text-slate-700 bg-white">
@@ -630,13 +650,21 @@
         {% if resources %}
         <div class="space-y-4">
             {% for r in resources %}
-            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center gap-5 hover:shadow-md transition-shadow">
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center gap-5 hover:shadow-md transition-shadow">
                 <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shrink-0 border
                     {{ 'bg-red-50 border-red-100' if r.resource_type == 'pdf'
                        else 'bg-purple-50 border-purple-100' if r.resource_type == 'video'
                        else 'bg-emerald-50 border-emerald-100' if r.resource_type == 'code'
                        else 'bg-blue-50 border-blue-100' }}">
-                    {{ '📄' if r.resource_type == 'pdf' else '🎥' if r.resource_type == 'video' else '💻' if r.resource_type == 'code' else '🔗' }}
+                    {% if r.resource_type == 'pdf' %}
+                    <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+                    {% elif r.resource_type == 'video' %}
+                    <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l4.5-3v10L15 14M4 6h9a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg>
+                    {% elif r.resource_type == 'code' %}
+                    <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+                    {% else %}
+                    <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.07 0l1.41-1.41a5 5 0 00-7.07-7.07L10 6M14 11a5 5 0 00-7.07 0l-1.41 1.41a5 5 0 007.07 7.07L14 18"/></svg>
+                    {% endif %}
                 </div>
                 <div class="flex-1 min-w-0">
                     <h3 class="font-bold text-primary">{{ r.title }}</h3>
@@ -651,12 +679,129 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm text-center">
+        <div class="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-center">
             <p class="text-sm text-slate-500">
                 {% if resources_total == 0 %}Your mentors haven't shared any resources yet.{% else %}No resources match your search.{% endif %}
             </p>
         </div>
         {% endif %}
+
+
+        <!-- ============================== NOTIFICATIONS TAB ============================== -->
+        {% elif active_tab == 'notifications' %}
+
+        <div class="max-w-2xl mx-auto py-4">
+            <div class="flex items-center justify-between mb-8">
+                <div class="flex items-center gap-3">
+                    <span class="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-500 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                    </span>
+                    <h1 class="font-display text-2xl font-semibold text-primary">Notifications</h1>
+                </div>
+                {% if unread_count and unread_count > 0 %}
+                <form action="/notifications/mark-read" method="post">
+                    <input type="hidden" name="return_tab" value="notifications">
+                    <button type="submit" class="text-xs font-semibold text-slate-500 hover:text-primary">Mark all read</button>
+                </form>
+                {% endif %}
+            </div>
+
+            {% if notifications %}
+            <div class="space-y-1.5">
+                {% for n in notifications %}
+                <div class="flex items-start gap-4 p-4 rounded-2xl transition-colors {{ 'bg-indigo-50/60' if not n.is_read else 'hover:bg-slate-50' }}">
+                    <span class="w-11 h-11 rounded-full bg-white border border-slate-200 text-indigo-500 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                    </span>
+                    <div class="flex-1 min-w-0 pt-1">
+                        <p class="text-sm text-slate-700 leading-snug">{{ n.message }}</p>
+                        <span class="text-xs text-slate-400">{{ n.created_at.strftime('%d %b, %I:%M %p') }}</span>
+
+                        {% if n.session_row and n.session_row.needs_action_from('student') %}
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            {% if n.session_row.status == 'reschedule_by_mentor' %}
+                            <form action="/session/{{ n.session_row.id }}/accept-proposal" method="post">
+                                <input type="hidden" name="return_tab" value="notifications">
+                                <button type="submit" class="text-xs font-bold bg-secondary hover:bg-teal-800 text-white px-3 py-1.5 rounded-lg shadow-xs">Accept new time</button>
+                            </form>
+                            <form action="/session/{{ n.session_row.id }}/reject-proposal" method="post">
+                                <input type="hidden" name="return_tab" value="notifications">
+                                <button type="submit" class="text-xs font-bold bg-slate-100 hover:bg-slate-200 text-primary px-3 py-1.5 rounded-lg">Keep original time</button>
+                            </form>
+                            {% elif n.session_row.status == 'declined' %}
+                            <a href="/student?tab=sessions" class="text-xs font-bold bg-primary hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg">Rebook</a>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% if not n.is_read %}<span class="w-2.5 h-2.5 rounded-full bg-indigo-500 mt-2 shrink-0"></span>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-16">
+                <span class="w-14 h-14 rounded-full bg-indigo-50 text-indigo-400 flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                </span>
+                <p class="text-sm text-slate-500">No notifications yet. Connect with a mentor to get started.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- ============================== PROFILE TAB ============================== -->
+        {% elif active_tab == 'profile' %}
+
+        <div class="max-w-3xl mx-auto py-4">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-6 pb-8 border-b border-slate-200">
+                <!-- Gradient "story ring" avatar -->
+                <div class="p-1 rounded-full bg-gradient-to-tr from-accent via-rose-400 to-violet-500 shrink-0">
+                    <div class="p-1 bg-white rounded-full">
+                        <div class="w-24 h-24 rounded-full bg-primary flex items-center justify-center text-white font-extrabold text-3xl">
+                            {{ student.full_name[:1] }}{{ student.full_name.split(' ')[1][:1] if student.full_name.split(' ')|length > 1 else '' }}
+                        </div>
+                    </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2.5 flex-wrap">
+                        <h1 class="font-display text-2xl font-semibold text-primary">{{ student.full_name }}</h1>
+                        <span class="inline-flex items-center gap-1.5 bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full">
+                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L2 8l10 5 10-5-10-5z"/><path d="M6 10v5c0 1.5 2.5 3 6 3s6-1.5 6-3v-5"/></svg>
+                            Student
+                        </span>
+                    </div>
+                    {% if student.email %}<p class="text-sm text-slate-500 mt-1">{{ student.email }}</p>{% endif %}
+
+                    <div class="flex gap-8 mt-5">
+                        <div>
+                            <span class="block text-lg font-extrabold text-primary">{{ my_mentorships|length }}</span>
+                            <span class="text-xs text-slate-500">Mentors</span>
+                        </div>
+                        <div>
+                            <span class="block text-lg font-extrabold text-primary">{{ confirmed_count }}</span>
+                            <span class="text-xs text-slate-500">Upcoming</span>
+                        </div>
+                        <div>
+                            <span class="block text-lg font-extrabold text-primary">{{ total_hours }}</span>
+                            <span class="text-xs text-slate-500">Learning hrs</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% if student.goal %}
+            <div class="pt-8">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">Learning goal</span>
+                <p class="text-sm text-slate-700 leading-relaxed bg-lightBg p-4 rounded-2xl border border-slate-200/80">{{ student.goal }}</p>
+            </div>
+            {% endif %}
+
+            {% if student.learning_mode %}
+            <div class="pt-6 mt-6 border-t border-slate-200">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400 block">Preferred learning mode</span>
+                <span class="font-extrabold text-primary text-lg">{{ student.learning_mode }}</span>
+            </div>
+            {% endif %}
+        </div>
 
         {% endif %}
     </main>
