@@ -1,1 +1,25 @@
+# Database files
 *.db
+*.sqlite3
+
+# Uploads directory
+uploads/
+
+# Python virtual environments & bytecode
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+
+# Environment variables / secrets
+.env
+
+# IDEs and OS files
+.vscode/
+.idea/
+.DS_Store
+
+#Admin Files
+Templates/AdminDashboard.html
+Templates/AdminLogin.html
