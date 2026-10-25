@@ -1,9 +1,11 @@
+import csv
+import io
 from datetime import date, datetime, timedelta
 from calendar import Calendar
 from pathlib import Path
 from uuid import uuid4
 
-from flask import Flask, flash, redirect, render_template, request, session, url_for
+from flask import Flask, Response, flash, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text, or_
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -33,7 +35,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DATABASE_PATH.as_posix()}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["MAX_CONTENT_LENGTH"] = 15 * 1024 * 1024  # 15 MB cap on any single upload
 
-ADMIN_SETUP_KEY = "CHANGE-THIS-TO-YOUR-OWN-SECRET-KEY"
+ADMIN_SETUP_KEY = "Change this to a secure key for admin account creation" # Change this to a secure key for admin account creation
 
 # Time limit in hours to accept/respond to a session booking or reschedule proposal
 RESPONSE_TIME_LIMIT_HOURS = 24
@@ -52,6 +54,7 @@ STATUS_RESCHEDULE_BY_STUDENT = "reschedule_by_student"
 STATUS_COMPLETED = "completed"
 STATUS_CANCELLED = "cancelled"
 STATUS_NOT_RESPONDED = "not_responded"  # Auto-expired booking/reschedule request
+STATUS_NOT_COMPLETED = "not_completed"  # Mentor marked the session as not completed
 
 # Still on active calendar/queue (not completed, not cancelled, not expired)
 LIVE_STATUSES = {
@@ -77,6 +80,7 @@ STATUS_LABELS = {
     STATUS_COMPLETED: "Completed",
     STATUS_CANCELLED: "Cancelled",
     STATUS_NOT_RESPONDED: "Not responded (Expired)",
+    STATUS_NOT_COMPLETED: "Not completed",
 }
 
 # Priority Queue weights: Urgent is 1 (highest priority), Low is 4 (lowest priority)
@@ -147,7 +151,16 @@ class Session(db.Model):
         return PRIORITY_ORDER.get(self.priority, 3)
 
     @property
+    def is_awaiting_completion(self):
+        """Confirmed session whose end time has passed but the mentor hasn't declared an outcome."""
+        if self.status != STATUS_CONFIRMED:
+            return False
+        return datetime.now() >= self.scheduled_at + timedelta(minutes=self.duration_minutes)
+
+    @property
     def status_label(self):
+        if self.is_awaiting_completion:
+            return "Not declared by mentor"
         return STATUS_LABELS.get(self.status, self.status)
 
     @property
@@ -216,8 +229,8 @@ with app.app_context():
 
 def cleanup_expired_sessions():
     """
-    1. Past sessions: Any confirmed session whose scheduled time + duration has passed
-       is automatically marked 'completed' and removed from live queue, but preserved in Session History.
+    1. Past sessions: A confirmed session whose scheduled time + duration has passed stays 'confirmed'
+       until the mentor marks it completed / not completed. Both parties get a one-time reminder.
     2. Overdue requests: Any pending/reschedule session that has exceeded RESPONSE_TIME_LIMIT_HOURS
        or whose scheduled date has arrived without response is marked 'not_responded' and
        removed from live queues, but preserved in Session History.
@@ -243,16 +256,23 @@ def cleanup_expired_sessions():
                 add_notification("mentor", s.mentorship.mentor_id,
                                  f"Session request '{s.topic}' expired: not responded in time.", s.id)
 
-    # 2. Process confirmed sessions whose meeting time has passed
+    # 2. Confirmed sessions whose meeting time has passed: the mentor must declare the outcome.
+    #    We do NOT auto-complete; we remind the mentor and tell the student it's undeclared (once each).
     confirmed_sessions = Session.query.filter_by(status=STATUS_CONFIRMED).all()
     for s in confirmed_sessions:
         end_time = s.scheduled_at + timedelta(minutes=s.duration_minutes)
-        if now >= end_time:
-            s.status = STATUS_COMPLETED
-            updated = True
-            if s.mentorship:
-                add_notification("student", s.mentorship.student_id,
-                                 f"Session '{s.topic}' completed and archived to history.", s.id)
+        if now >= end_time and s.mentorship:
+            when = s.scheduled_at.strftime("%a %d %b, %I:%M %p")
+            mentor_msg = (f"Session '{s.topic}' ({when}) has ended. "
+                          f"Please mark it as completed or not completed.")
+            student_msg = (f"Session '{s.topic}' ({when}) has ended, but it is still "
+                           f"not declared by your mentor.")
+            if not notification_exists("mentor", s.mentorship.mentor_id, s.id, mentor_msg):
+                add_notification("mentor", s.mentorship.mentor_id, mentor_msg, s.id)
+                updated = True
+            if not notification_exists("student", s.mentorship.student_id, s.id, student_msg):
+                add_notification("student", s.mentorship.student_id, student_msg, s.id)
+                updated = True
 
     if updated:
         db.session.commit()
@@ -277,6 +297,12 @@ def add_notification(role, recipient_id, message, session_id=None):
         message=message,
         session_id=session_id,
     ))
+
+
+def notification_exists(role, recipient_id, session_id, message):
+    return Notification.query.filter_by(
+        recipient_role=role, recipient_id=recipient_id, session_id=session_id, message=message
+    ).first() is not None
 
 
 def get_owned_mentorship(mentorship_id):
@@ -566,7 +592,7 @@ def student_page():
     confirmed_sessions = [s for s in all_sessions if s.status == STATUS_CONFIRMED and s.scheduled_at > now]
     completed_sessions = [s for s in all_sessions if s.status == STATUS_COMPLETED]
     awaiting_sessions = [s for s in all_sessions if s.status in AWAITING_STATUSES]
-    cancelled_sessions = [s for s in all_sessions if s.status in {STATUS_CANCELLED, STATUS_DECLINED, STATUS_NOT_RESPONDED}]
+    cancelled_sessions = [s for s in all_sessions if s.status in {STATUS_CANCELLED, STATUS_DECLINED, STATUS_NOT_RESPONDED, STATUS_NOT_COMPLETED}]
     action_sessions = [s for s in all_sessions if s.needs_action_from("student")]
 
     total_hours = round(sum(s.duration_minutes for s in completed_sessions) / 60, 1)
@@ -585,6 +611,9 @@ def student_page():
     else:
         status_filter = "all"
         filtered_sessions = all_sessions
+
+    # Session history list is ordered by date & time (latest first), not by priority
+    filtered_sessions = sorted(filtered_sessions, key=lambda s: s.scheduled_at, reverse=True)
 
     selected_id = request.args.get("session_id", type=int)
     selected_session = next((s for s in all_sessions if s.id == selected_id), None) if selected_id else None
@@ -1012,6 +1041,33 @@ def complete_session(session_id):
     return redirect(url_for("mentor_page"))
 
 
+@app.route("/session/<int:session_id>/not-complete", methods=["POST"])
+def not_complete_session(session_id):
+    if session.get("current_role") != "mentor" or not session.get("current_user"):
+        return redirect(url_for("login_page"))
+
+    session_row, mentorship = get_owned_session(session_id)
+    if session_row is None:
+        flash("Couldn't find that session, or it's not yours.", "error")
+        return redirect(url_for("mentor_page"))
+    if session_row.status != STATUS_CONFIRMED:
+        flash(f"That session is '{session_row.status_label}' — only a confirmed session can be marked not completed.", "error")
+        return redirect(url_for("mentor_page"))
+
+    session_row.status = STATUS_NOT_COMPLETED
+    notes = request.form.get("notes", "").strip()
+    if notes:
+        session_row.notes = notes
+    add_notification(
+        "student", mentorship.student_id,
+        f"{session['current_user']['full_name']} marked '{session_row.topic}' as not completed.",
+        session_row.id,
+    )
+    db.session.commit()
+    flash(f"Marked '{session_row.topic}' as not completed.", "success")
+    return redirect(url_for("mentor_page"))
+
+
 def save_uploaded_pdf(file_storage):
     if file_storage is None or not file_storage.filename:
         return None, None
@@ -1120,7 +1176,15 @@ def mentor_page():
 
     now = datetime.now()
     pending_requests = [s for s in all_sessions if s.needs_action_from("mentor")]
-    upcoming_sessions = [s for s in all_sessions if s.status == STATUS_CONFIRMED and s.scheduled_at > now]
+    # Confirmed sessions stay here until the mentor declares them completed / not completed.
+    # Ended-but-undeclared sessions are listed first so they get attention.
+    confirmed_all = [s for s in all_sessions if s.status == STATUS_CONFIRMED]
+    upcoming_sessions = (
+        [s for s in confirmed_all if s.is_awaiting_completion]
+        + [s for s in confirmed_all if not s.is_awaiting_completion and s.scheduled_at > now]
+    )
+    # Session history ordered by date & time (latest first), not by priority
+    history_sessions = sorted(all_sessions_raw, key=lambda s: s.scheduled_at, reverse=True)
 
     notifications = (
         Notification.query.filter_by(recipient_role="mentor", recipient_id=mentor.id)
@@ -1141,6 +1205,7 @@ def mentor_page():
         pending_requests=pending_requests,
         pending_count=len(pending_requests),
         all_sessions=all_sessions,
+        history_sessions=history_sessions,
         notifications=notifications,
         unread_count=unread_count,
         current_user=session.get("current_user"),
@@ -1256,15 +1321,125 @@ def admin_dashboard_page():
 
     students = Student.query.order_by(Student.id.desc()).all()
     mentors = Mentor.query.order_by(Mentor.id.desc()).all()
+    all_sessions = Session.query.order_by(Session.scheduled_at.desc()).all()
+
+    unmatched_count = sum(1 for s in students if not s.mentorships)
+    awaiting_declaration_count = sum(1 for s in all_sessions if s.is_awaiting_completion)
+    completed_count = sum(1 for s in all_sessions if s.status == STATUS_COMPLETED)
+
+    active_tab = request.args.get("tab", "students")
+    if active_tab not in {"students", "mentors", "sessions"}:
+        active_tab = "students"
 
     return render_template(
         "AdminDashboard.html",
         students=students,
         mentors=mentors,
+        all_sessions=all_sessions,
         student_count=len(students),
         mentor_count=len(mentors),
+        unmatched_count=unmatched_count,
+        awaiting_declaration_count=awaiting_declaration_count,
+        session_count=len(all_sessions),
+        completed_count=completed_count,
+        active_tab=active_tab,
         current_user=session.get("current_user"),
         current_role=session.get("current_role"),
+    )
+
+
+@app.route("/admin/students/<int:student_id>/edit", methods=["POST"])
+def admin_edit_student(student_id):
+    if not admin_required():
+        return redirect(url_for("admin_login_page"))
+
+    student = db.session.get(Student, student_id)
+    if student is None:
+        flash("That student no longer exists.", "error")
+        return redirect(url_for("admin_dashboard_page", tab="students"))
+
+    full_name = request.form.get("full_name", "").strip()
+    email = request.form.get("email", "").strip()
+    goal = request.form.get("goal", "").strip()
+    learning_mode = request.form.get("learning_mode", "").strip()
+
+    if not (full_name and email and goal) or learning_mode not in {"Online", "Offline", "Hybrid"}:
+        flash("Couldn't update the student — please fill in every field.", "error")
+    elif Student.query.filter(Student.email == email, Student.id != student.id).first():
+        flash("Another student already uses that email.", "error")
+    else:
+        student.full_name = full_name
+        student.email = email
+        student.goal = goal
+        student.learning_mode = learning_mode
+        db.session.commit()
+        flash(f"Updated {student.full_name}.", "success")
+    return redirect(url_for("admin_dashboard_page", tab="students"))
+
+
+@app.route("/admin/mentors/<int:mentor_id>/edit", methods=["POST"])
+def admin_edit_mentor(mentor_id):
+    if not admin_required():
+        return redirect(url_for("admin_login_page"))
+
+    mentor = db.session.get(Mentor, mentor_id)
+    if mentor is None:
+        flash("That mentor no longer exists.", "error")
+        return redirect(url_for("admin_dashboard_page", tab="mentors"))
+
+    full_name = request.form.get("full_name", "").strip()
+    email = request.form.get("email", "").strip()
+    expertise = request.form.get("expertise", "").strip()
+    mentoring_format = request.form.get("mentoring_format", "").strip()
+    description = request.form.get("description", "").strip()
+
+    if not (full_name and email and expertise) or mentoring_format not in {"One to one", "Group", "Both"}:
+        flash("Couldn't update the mentor — please fill in every required field.", "error")
+    elif Mentor.query.filter(Mentor.email == email, Mentor.id != mentor.id).first():
+        flash("Another mentor already uses that email.", "error")
+    else:
+        mentor.full_name = full_name
+        mentor.email = email
+        mentor.expertise = expertise
+        mentor.mentoring_format = mentoring_format
+        mentor.description = description
+        db.session.commit()
+        flash(f"Updated {mentor.full_name}.", "success")
+    return redirect(url_for("admin_dashboard_page", tab="mentors"))
+
+
+@app.route("/admin/export/<kind>.csv")
+def admin_export_csv(kind):
+    if not admin_required():
+        return redirect(url_for("admin_login_page"))
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+
+    if kind == "students":
+        writer.writerow(["ID", "Name", "Email", "Goal", "Learning mode", "Mentors connected"])
+        for s in Student.query.order_by(Student.id).all():
+            writer.writerow([s.id, s.full_name, s.email, s.goal, s.learning_mode, len(s.mentorships)])
+    elif kind == "mentors":
+        writer.writerow(["ID", "Name", "Email", "Expertise", "Format", "Students connected", "Description"])
+        for m in Mentor.query.order_by(Mentor.id).all():
+            writer.writerow([m.id, m.full_name, m.email, m.expertise, m.mentoring_format,
+                             len(m.mentorships), m.description or ""])
+    elif kind == "sessions":
+        writer.writerow(["ID", "Date & time", "Duration (min)", "Topic", "Student", "Mentor",
+                         "Mode", "Priority", "Status"])
+        for s in Session.query.order_by(Session.scheduled_at.desc()).all():
+            writer.writerow([s.id, s.scheduled_at.strftime("%Y-%m-%d %H:%M"), s.duration_minutes, s.topic,
+                             s.mentorship.student.full_name, s.mentorship.mentor.full_name,
+                             s.mode, s.priority, s.status_label])
+    else:
+        flash("Unknown export type.", "error")
+        return redirect(url_for("admin_dashboard_page"))
+
+    return Response(
+        buffer.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=educonnect_{kind}.csv"},
     )
 
 

@@ -460,6 +460,11 @@
                                     <input type="text" name="notes" placeholder="What did you cover?" class="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
                                     <button type="submit" class="text-xs font-bold bg-secondary hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg whitespace-nowrap shadow-xs">Mark complete</button>
                                 </form>
+                                {% if s.is_awaiting_completion %}
+                                <form action="/session/{{ s.id }}/not-complete" method="post">
+                                    <button type="submit" class="text-xs font-semibold text-slate-700 border border-slate-300 hover:bg-slate-100 px-3 py-1.5 rounded-lg whitespace-nowrap">Not completed</button>
+                                </form>
+                                {% endif %}
                                 <form action="/session/{{ s.id }}/cancel" method="post">
                                     <button type="submit" class="text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg">Cancel</button>
                                 </form>
@@ -606,9 +611,9 @@
                     <span class="text-xs text-slate-400 font-medium">Auto-saved records</span>
                 </div>
 
-                {% if all_sessions %}
+                {% if history_sessions %}
                 <div class="space-y-3">
-                    {% for s in all_sessions %}
+                    {% for s in history_sessions %}
                     <div class="p-4 bg-lightBg rounded-2xl border border-slate-200 flex items-center justify-between flex-wrap gap-3">
                         <div>
                             <div class="flex items-center gap-2 flex-wrap">
